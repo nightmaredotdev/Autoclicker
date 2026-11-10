@@ -265,6 +265,7 @@ mod imp {
         assert_eq!(ui.get_toggle_key(), "F13", "shown on the Start/Stop button");
         assert!(ui.get_fixed_mode());
         assert_eq!(ui.get_target_text(), "Not set");
+        assert_eq!(ui.get_coordinates_text(), "Coordinates: Not set");
 
         step("fixed mode without a target explains what to do");
         ui.invoke_start_stop_clicked();
@@ -331,7 +332,14 @@ mod imp {
             ui.get_target_text() == expected
         });
         assert!(!ui.get_picking() && !app.picking());
-        assert!(ui.get_notice_text().contains("Target set"));
+        assert_eq!(
+            ui.get_coordinates_text(),
+            format!("Coordinates: {expected}")
+        );
+        assert!(
+            !ui.get_notice_text().contains("set to"),
+            "a picked position is shown by the coordinates, not a message"
+        );
         assert_eq!(app.config().click.target, Some(target));
         assert_eq!(saved(path).click.target, Some(target));
         pump(Duration::from_millis(200));
@@ -353,8 +361,15 @@ mod imp {
         pump_until("pick cancelled", Duration::from_secs(2), || {
             !ui.get_picking()
         });
-        assert!(ui.get_notice_text().contains("cancelled"));
+        assert!(
+            !ui.get_notice_text().to_lowercase().contains("cancel"),
+            "no message for a cancelled pick"
+        );
         assert_eq!(ui.get_target_text(), expected);
+        assert_eq!(
+            ui.get_coordinates_text(),
+            format!("Coordinates: {expected}")
+        );
         assert_eq!(app.config().click.target, Some(target));
         assert_eq!(saved(path).click.target, Some(target));
         pump(Duration::from_millis(200));
@@ -369,6 +384,7 @@ mod imp {
         assert!(ui.get_picking());
         ui.invoke_pick_target_clicked(); // now labelled Cancel
         assert!(!ui.get_picking() && !app.picking());
+        assert!(!ui.get_notice_text().to_lowercase().contains("cancel"));
         recorder.clear();
         assert_eq!(click_unmarked_button(target, false), 2);
         assert!(
@@ -406,6 +422,10 @@ mod imp {
             "switching mode cancels"
         );
         assert_eq!(ui.get_target_text(), expected, "still shown");
+        assert_eq!(
+            ui.get_coordinates_text(),
+            format!("Coordinates: {expected}")
+        );
         assert_eq!(saved(path).click.target, Some(target), "still saved");
         ui.invoke_pick_target_clicked();
         assert!(!ui.get_picking(), "no picking in Current position mode");

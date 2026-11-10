@@ -434,7 +434,14 @@ impl Controller {
             }
         }
         *self.snapshot.borrow_mut() = update.snapshot;
-        if let Some(notice) = update.notices.last() {
+        // A new position is shown by the coordinates; only other notices
+        // (problems such as starting without a position) are displayed.
+        if let Some(notice) = update
+            .notices
+            .iter()
+            .rev()
+            .find(|n| !matches!(n, autoclicker_core::status::Notice::TargetSet(_)))
+        {
             self.show_notice(capitalize(&notice.to_string()));
         }
         let target_changed = {
@@ -658,7 +665,6 @@ impl Controller {
         self.commit_pending_edits();
         if self.pick_slot.borrow().is_some() {
             self.cancel_pick();
-            self.show_notice("Pick cancelled; the position is unchanged.".into());
             return;
         }
         if self.config.borrow().click.mode != TargetMode::Fixed {
@@ -702,11 +708,9 @@ impl Controller {
         // The picker removes its hook by itself once the release is swallowed.
         self.pick_slot.borrow_mut().take();
         self.with_ui(|ui| ui.set_picking(false));
-        match outcome {
-            PickOutcome::Picked(p) => self.set_picked_target(p),
-            PickOutcome::Cancelled => {
-                self.show_notice("Pick cancelled; the position is unchanged.".into());
-            }
+        // A cancelled pick leaves the position (and its display) unchanged.
+        if let PickOutcome::Picked(p) = outcome {
+            self.set_picked_target(p);
         }
     }
 
@@ -724,7 +728,6 @@ impl Controller {
             self.save();
         }
         info!("target set to {p}");
-        self.show_notice(format!("Target set to {p}"));
         self.with_ui(|ui| self.render_status(ui));
     }
 

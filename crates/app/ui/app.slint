@@ -380,6 +380,8 @@ export component MainWindow inherits Window {
 
     /// Whether the mode control has keyboard focus (read by the GUI tests).
     out property <bool> mode-control-focused: mode-control.has-focus;
+    /// The coordinate display next to Pick target.
+    out property <string> coordinates-text: "Coordinates: " + root.target-text;
     /// "Pick target" is only available in Fixed position mode.
     out property <bool> pick-enabled: root.fixed-mode;
 
@@ -485,14 +487,13 @@ export component MainWindow inherits Window {
             }
             if root.error-text != "": Message { text: root.error-text; }
         }
-        // Transient notices, below the status card so the card holds only the
-        // status and the Start/Stop button (centred together). The line keeps
-        // its height so the window does not jump when a notice appears.
-        Text {
+        // Problem notices (e.g. Start without a position), below the status
+        // card. The line only exists while there is a notice; no space is
+        // reserved for it otherwise.
+        if root.notice-text != "": Text {
             text: root.notice-text;
             color: Theme.muted;
             font-size: 12px;
-            min-height: 16px;
             overflow: elide;
             horizontal-alignment: center;
         }
@@ -611,29 +612,11 @@ export component MainWindow inherits Window {
                         HorizontalLayout {
                             spacing: 8px;
                             Text {
-                                text: "Position";
-                                vertical-alignment: center;
-                                color: root.fixed-mode ? Palette.foreground : Theme.idle;
-                            }
-                            Rectangle {
+                                text: root.coordinates-text;
                                 horizontal-stretch: 1;
-                                min-height: 32px;
-                                border-radius: 4px;
-                                border-width: 1px;
-                                border-color: root.picking ? Palette.accent-background : Palette.border;
-                                background: root.fixed-mode ? Palette.control-background
-                                    : Palette.control-background.transparentize(60%);
-                                accessible-role: text;
-                                accessible-label: "Position";
-                                accessible-value: root.target-text;
-                                Text {
-                                    x: 8px;
-                                    width: parent.width - 16px;
-                                    text: root.target-text;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    color: root.fixed-mode ? Palette.control-foreground : Theme.idle;
-                                }
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: root.fixed-mode ? Palette.foreground : Theme.idle;
                             }
                             Button {
                                 text: root.picking ? "Cancel" : "Pick target";
