@@ -3,7 +3,7 @@
 // Logic lives in Rust (crates/app/src/gui.rs); this file only lays out the
 // window and forwards user actions through callbacks.
 
-import { Button, CheckBox, LineEdit, Palette, TabWidget, AboutSlint, VerticalBox } from "std-widgets.slint";
+import { Button, CheckBox, Palette, AboutSlint, VerticalBox } from "std-widgets.slint";
 
 export enum RunStatus { stopped, waiting, running, error }
 
@@ -33,11 +33,19 @@ component Card inherits Rectangle {
     VerticalLayout {
         padding: Theme.card-padding;
         spacing: 8px;
-        if root.title != "": Text {
-            text: root.title;
-            font-size: 12px;
-            font-weight: 600;
-            color: Theme.muted;
+        if root.title != "": VerticalLayout {
+            spacing: 6px;
+            Text {
+                text: root.title;
+                font-size: 12px;
+                font-weight: 600;
+                color: Theme.muted;
+            }
+            // Subtle divider between the heading and the section's controls.
+            Rectangle {
+                height: 1px;
+                background: Palette.border.transparentize(30%);
+            }
         }
         @children
     }
@@ -70,39 +78,87 @@ component Message inherits Rectangle {
     }
 }
 
+// A single-line numeric text field. Fluent's LineEdit always shows a clear
+// ("X") button while focused, which is unnecessary here: selecting the value
+// and typing replaces it. Editing, Enter and focus behave as in LineEdit.
+component NumberField inherits Rectangle {
+    in-out property <string> text <=> input.text;
+    in property <bool> enabled: true;
+    out property <bool> has-focus: input.has-focus;
+    callback edited();
+    callback accepted();
+    public function focus-input() {
+        input.focus();
+    }
+    min-height: 32px;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: Palette.border;
+    background: root.enabled ? Palette.control-background : Palette.control-background.transparentize(60%);
+    clip: true;
+    input := TextInput {
+        x: 8px;
+        width: parent.width - 16px;
+        height: parent.height;
+        enabled: root.enabled;
+        single-line: true;
+        input-type: decimal;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        color: root.enabled ? Palette.control-foreground : Theme.idle;
+        selection-background-color: Palette.selection-background;
+        selection-foreground-color: Palette.selection-foreground;
+        edited => { root.edited(); }
+        accepted => { root.accepted(); }
+    }
+    // Focus indicator, like Fluent's text fields.
+    if input.has-focus: Rectangle {
+        x: 1px;
+        y: parent.height - 2px;
+        width: parent.width - 2px;
+        height: 2px;
+        background: Palette.accent-background;
+    }
+}
+
 component FieldRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> description;
     in property <string> unit;
-    in property <string> hint;
+    in property <bool> enabled: true;
+    /// The unit is a clickable toggle (e.g. ms / CPS).
+    in property <bool> unit-toggles;
     in-out property <string> value;
     callback edited();
     callback commit();
+    callback unit-clicked();
     public function focus-input() {
-        edit.focus();
+        edit.focus-input();
     }
     spacing: 10px;
     VerticalLayout {
         horizontal-stretch: 1;
         alignment: center;
         spacing: 1px;
-        Text { text: root.label; }
+        Text {
+            text: root.label;
+            color: root.enabled ? Palette.foreground : Theme.idle;
+        }
         if root.description != "": Text {
             text: root.description;
-            color: Theme.muted;
+            color: root.enabled ? Theme.muted : Theme.idle;
             font-size: 11px;
             wrap: word-wrap;
         }
     }
-    VerticalLayout {
-        alignment: center;
-        spacing: 2px;
-        HorizontalLayout {
-            spacing: 6px;
-            edit := LineEdit {
+    HorizontalLayout {
+        spacing: 6px;
+        alignment: end;
+        VerticalLayout {
+            alignment: center;
+            edit := NumberField {
                 text <=> root.value;
-                input-type: decimal;
-                horizontal-alignment: right;
+                enabled: root.enabled;
                 width: 80px;
                 edited => { root.edited(); }
                 accepted => { root.commit(); }
@@ -112,18 +168,40 @@ component FieldRow inherits HorizontalLayout {
                     if !self.has-focus { root.commit(); }
                 }
             }
+        }
+        if !root.unit-toggles: Text {
+            text: root.unit;
+            vertical-alignment: center;
+            color: root.enabled ? Theme.muted : Theme.idle;
+            width: 30px;
+        }
+        if root.unit-toggles: Rectangle {
+            width: 30px;
+            unit-area := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.unit-clicked(); }
+            }
             Text {
                 text: root.unit;
                 vertical-alignment: center;
-                color: Theme.muted;
-                width: 22px;
+                horizontal-alignment: left;
+                width: parent.width;
+                height: parent.height;
+                // Accent colour marks it as clickable; brighter on hover.
+                color: unit-area.has-hover ? Palette.accent-background.brighter(20%) : Palette.accent-background;
             }
-        }
-        if root.hint != "": Text {
-            text: root.hint;
-            color: Theme.muted;
-            font-size: 11px;
-            horizontal-alignment: right;
+            // Thin underline, like a link.
+            Rectangle {
+                x: 0;
+                y: parent.height / 2 + 8px;
+                width: unit-text-width.preferred-width;
+                height: 1px;
+                background: unit-area.has-hover ? Palette.accent-background.brighter(20%) : Palette.accent-background.transparentize(40%);
+            }
+            unit-text-width := Text {
+                visible: false;
+                text: root.unit;
+            }
         }
     }
 }
@@ -177,11 +255,11 @@ export component MainWindow inherits Window {
     in property <string> window-title: "Autoclicker";
     in property <RunStatus> status: RunStatus.stopped;
     in property <string> status-headline: "Stopped";
-    in property <string> status-detail;
     in property <string> error-text;
     in property <string> notice-text;
     in property <string> config-warning;
-    in property <string> toggle-hint;
+    /// The toggle hotkey ("" if unbound), shown on the Start/Stop button.
+    in property <string> toggle-key;
     in-out property <bool> fixed-mode: true;
     in property <string> target-text: "Not set";
     in property <int> pick-countdown;
@@ -189,10 +267,11 @@ export component MainWindow inherits Window {
     in-out property <string> jitter-text;
     in-out property <string> hold-text;
     in-out property <string> radius-text;
-    in property <string> rate-hint;
+    in property <bool> interval-in-cps;
     in property <string> settings-error;
     in property <bool> settings-pending;
     in property <[HotkeyRow]> hotkeys;
+    in-out property <int> current-tab: 0;
     in-out property <int> capturing-index: -1;
     in property <string> hotkeys-error;
     in-out property <bool> keep-on-top;
@@ -203,6 +282,7 @@ export component MainWindow inherits Window {
     callback pick-target-clicked();
     callback settings-edited();
     callback settings-commit();
+    callback interval-unit-clicked();
     callback hotkey-record(int);
     callback hotkey-key(string, bool, bool, bool);
     callback hotkey-cancel();
@@ -220,6 +300,11 @@ export component MainWindow inherits Window {
     /// Puts keyboard focus into the Interval field (used by the GUI tests).
     public function focus-interval-field() {
         interval-row.focus-input();
+    }
+
+    /// Moves keyboard focus off any edited field (which commits it).
+    public function release-field-focus() {
+        focus-sink.focus();
     }
 
     public function start-recording(index: int) {
@@ -300,51 +385,91 @@ export component MainWindow inherits Window {
                         font-weight: 700;
                         color: root.status == RunStatus.error ? Theme.error : Palette.foreground;
                     }
-                    if root.status-detail != "": Text {
-                        text: root.status-detail;
-                        color: Theme.muted;
-                        font-size: 12px;
-                    }
                 }
                 VerticalLayout {
                     alignment: center;
-                    spacing: 2px;
                     Button {
-                        text: root.status == RunStatus.running || root.status == RunStatus.waiting ? "Stop" : "Start";
+                        text: (root.status == RunStatus.running || root.status == RunStatus.waiting ? "Stop" : "Start")
+                            + (root.toggle-key != "" ? " (" + root.toggle-key + ")" : "");
                         primary: true;
-                        min-width: 104px;
+                        min-width: 120px;
                         clicked => { root.start-stop-clicked(); }
-                    }
-                    Text {
-                        text: root.toggle-hint;
-                        color: Theme.muted;
-                        font-size: 11px;
-                        horizontal-alignment: center;
                     }
                 }
             }
             if root.error-text != "": Message { text: root.error-text; }
-            // Transient notices; the line always keeps its height so the
-            // window does not jump when a notice appears.
-            Text {
-                text: root.notice-text;
-                color: Theme.muted;
-                font-size: 12px;
-                min-height: 16px;
-                overflow: elide;
+        }
+        // Transient notices, below the status card so the card holds only the
+        // status and the Start/Stop button (centred together). The line keeps
+        // its height so the window does not jump when a notice appears.
+        Text {
+            text: root.notice-text;
+            color: Theme.muted;
+            font-size: 12px;
+            min-height: 16px;
+            overflow: elide;
+            horizontal-alignment: center;
+        }
+
+        // Tab bar with centred labels (the standard TabWidget left-aligns
+        // them). Clicking a tab moves the focus off an edited field first, so
+        // the field commits as before.
+        VerticalLayout {
+            spacing: 0px;
+            HorizontalLayout {
+                for title[index] in ["Settings", "Hotkeys"]: Rectangle {
+                    horizontal-stretch: 1;
+                    height: 36px;
+                    border-radius: 4px;
+                    background: tab-area.has-hover && root.current-tab != index
+                        ? Palette.alternate-background.transparentize(40%) : transparent;
+                    tab-area := TouchArea {
+                        clicked => {
+                            root.release-field-focus();
+                            root.current-tab = index;
+                        }
+                    }
+                    Text {
+                        text: title;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        font-weight: root.current-tab == index ? 600 : 400;
+                        color: root.current-tab == index ? Palette.foreground : Theme.muted;
+                    }
+                    if root.current-tab == index: Rectangle {
+                        y: parent.height - 3px;
+                        x: (parent.width - 32px) / 2;
+                        width: 32px;
+                        height: 3px;
+                        border-radius: 1.5px;
+                        background: Palette.accent-background;
+                    }
+                }
+            }
+            Rectangle {
+                height: 1px;
+                background: Palette.border.transparentize(40%);
             }
         }
 
-        TabWidget {
+        // Both pages occupy the same area, which is as tall as the larger
+        // one, so the window size does not change between tabs. The hidden
+        // page is invisible and takes no input.
+        Rectangle {
             vertical-stretch: 1;
-            Tab {
-                title: "Clicking";
-                VerticalLayout {
-                    padding-top: 10px;
+            min-height: max(settings-page.preferred-height, hotkeys-page.preferred-height);
+            min-width: max(settings-page.min-width, hotkeys-page.min-width);
+            settings-page := VerticalLayout {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                visible: root.current-tab == 0;
+                padding-top: 10px;
                     spacing: Theme.gap;
                     alignment: start;
                     Card {
-                        title: "WHERE TO CLICK";
+                        title: "TARGET";
                         HorizontalLayout {
                             spacing: 6px;
                             Button {
@@ -389,8 +514,9 @@ export component MainWindow inherits Window {
                         interval-row := FieldRow {
                             label: "Interval";
                             description: "Time between consecutive click starts.";
-                            unit: "ms";
-                            hint: root.rate-hint;
+                            unit: root.interval-in-cps ? "CPS" : "ms";
+                            unit-toggles: true;
+                            unit-clicked => { root.interval-unit-clicked(); }
                             value <=> root.interval-text;
                             edited => { root.settings-edited(); }
                             commit => { root.settings-commit(); }
@@ -413,9 +539,9 @@ export component MainWindow inherits Window {
                         }
                         FieldRow {
                             label: "Position jitter";
-                            description: "Randomly offsets the click position within the configured radius.";
+                            description: "Randomly offsets the click position within the configured radius. Fixed target mode only.";
                             unit: "px";
-                            hint: root.fixed-mode ? "" : "fixed target only";
+                            enabled: root.fixed-mode;
                             value <=> root.radius-text;
                             edited => { root.settings-edited(); }
                             commit => { root.settings-commit(); }
@@ -428,56 +554,54 @@ export component MainWindow inherits Window {
                         }
                     }
                 }
-            }
-            Tab {
-                title: "Hotkeys";
-                VerticalLayout {
-                    padding-top: 10px;
-                    spacing: Theme.gap;
-                    alignment: start;
-                    Card {
-                        title: "GLOBAL HOTKEYS";
-                        for row[index] in root.hotkeys: HorizontalLayout {
-                            spacing: 8px;
-                            VerticalLayout {
-                                horizontal-stretch: 1;
-                                alignment: center;
-                                Text { text: row.label; }
-                                if row.problem != "": Text {
-                                    text: row.problem;
-                                    color: Theme.error;
-                                    font-size: 11px;
-                                    wrap: word-wrap;
-                                }
-                            }
-                            Button {
-                                text: root.capturing-index == index ? "Press keys…" : row.binding;
-                                primary: root.capturing-index == index;
-                                min-width: 132px;
-                                clicked => {
-                                    if root.capturing-index == index {
-                                        root.hotkey-cancel();
-                                    } else {
-                                        root.start-recording(index);
-                                    }
-                                }
-                            }
-                            Button {
-                                text: "Clear";
-                                enabled: row.bound && root.capturing-index < 0;
-                                clicked => { root.hotkey-clear(index); }
-                            }
-                        }
-                        if root.hotkeys-error != "": Message { text: root.hotkeys-error; }
-                        Text {
-                            text: root.capturing-index >= 0
-                                ? "Press the new key combination, or Esc to cancel. If nothing happens, another program already uses that combination."
-                                : "Hotkeys work while other programs are focused. Those programs do not receive the keys.";
-                            color: Theme.muted;
+            hotkeys-page := VerticalLayout {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                visible: root.current-tab == 1;
+                padding-top: 14px;
+                spacing: Theme.gap;
+                alignment: start;
+                for row[index] in root.hotkeys: HorizontalLayout {
+                    spacing: 8px;
+                    padding-left: 4px;
+                    padding-right: 4px;
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        Text { text: row.label; }
+                        if row.problem != "": Text {
+                            text: row.problem;
+                            color: Theme.error;
                             font-size: 11px;
                             wrap: word-wrap;
                         }
                     }
+                    Button {
+                        text: root.capturing-index == index ? "Press keys…" : row.binding;
+                        primary: root.capturing-index == index;
+                        min-width: 132px;
+                        clicked => {
+                            if root.capturing-index == index {
+                                root.hotkey-cancel();
+                            } else {
+                                root.start-recording(index);
+                            }
+                        }
+                    }
+                    Button {
+                        text: "Clear";
+                        enabled: row.bound && root.capturing-index < 0;
+                        clicked => { root.hotkey-clear(index); }
+                    }
+                }
+                if root.hotkeys-error != "": Message { text: root.hotkeys-error; }
+                if root.capturing-index >= 0: Text {
+                    text: "Press the new key combination, or Esc to cancel. If nothing happens, another program already uses that combination.";
+                    color: Theme.muted;
+                    font-size: 11px;
+                    wrap: word-wrap;
                 }
             }
         }

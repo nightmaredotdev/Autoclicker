@@ -235,7 +235,7 @@ mod imp {
         assert_eq!(ui.get_status(), RunStatus::Stopped);
         assert_eq!(ui.get_status_headline(), "Stopped");
         assert_eq!(ui.get_config_warning(), "");
-        assert_eq!(ui.get_toggle_hint(), "or press F13");
+        assert_eq!(ui.get_toggle_key(), "F13", "shown on the Start/Stop button");
         assert!(ui.get_fixed_mode());
         assert_eq!(ui.get_target_text(), "Not set");
 
@@ -263,13 +263,6 @@ mod imp {
             ui.get_status() == RunStatus::Running
         });
         assert_eq!(main_window("Autoclicker").title, "Autoclicker - Running");
-        pump_until("rate shown", Duration::from_secs(2), || {
-            ui.get_status_detail().ends_with(" clicks/s")
-        });
-        assert!(
-            !ui.get_status_detail().contains("click "),
-            "rate only, no counter"
-        );
         ui.invoke_start_stop_clicked();
         pump_until("stopped state", Duration::from_secs(2), || {
             ui.get_status() == RunStatus::Stopped
@@ -281,7 +274,6 @@ mod imp {
             events.iter().all(|e| e.point == at),
             "cursor mode must not move the cursor"
         );
-        assert_eq!(ui.get_status_detail(), "", "no click counter is shown");
         assert_eq!(main_window("Autoclicker").title, "Autoclicker");
         recorder.clear();
 
@@ -376,13 +368,67 @@ mod imp {
         ui.set_hold_text("10".into());
         ui.set_interval_text("150".into());
         ui.invoke_settings_edited();
-        assert_eq!(ui.get_rate_hint(), "≈ 6.7 clicks/s");
         assert!(ui.get_settings_pending());
         ui.invoke_settings_commit();
         assert_eq!(ui.get_settings_error(), "");
         assert!(!ui.get_settings_pending());
         assert_eq!(app.config().click.interval_ms, 150);
         assert_eq!(saved(path).click.interval_ms, 150);
+
+        step("interval unit toggles between ms and CPS without drift");
+        assert!(!ui.get_interval_in_cps());
+        ui.invoke_interval_unit_clicked();
+        assert!(ui.get_interval_in_cps());
+        assert_eq!(ui.get_interval_text(), "6.67", "150 ms shown as CPS");
+        assert_eq!(
+            app.config().click.interval_ms,
+            150,
+            "toggling changes nothing stored"
+        );
+        for _ in 0..10 {
+            ui.invoke_interval_unit_clicked();
+            ui.invoke_interval_unit_clicked();
+        }
+        assert_eq!(ui.get_interval_text(), "6.67");
+        assert_eq!(
+            app.config().click.interval_ms,
+            150,
+            "no drift after repeated toggling"
+        );
+        // Entering a rate stores the whole-millisecond interval and shows its exact rate.
+        ui.set_interval_text("14.3".into());
+        ui.invoke_settings_edited();
+        ui.invoke_settings_commit();
+        assert_eq!(app.config().click.interval_ms, 70);
+        assert_eq!(saved(path).click.interval_ms, 70);
+        assert_eq!(ui.get_interval_text(), "14.29");
+        ui.invoke_interval_unit_clicked();
+        assert!(!ui.get_interval_in_cps());
+        assert_eq!(ui.get_interval_text(), "70");
+        // Limits apply in CPS too, and an invalid entry blocks switching units.
+        ui.invoke_interval_unit_clicked();
+        ui.set_interval_text("250".into());
+        ui.invoke_settings_edited();
+        assert!(
+            ui.get_settings_error()
+                .contains("faster than the maximum of 100 CPS"),
+            "{}",
+            ui.get_settings_error()
+        );
+        ui.invoke_interval_unit_clicked();
+        assert!(
+            ui.get_interval_in_cps(),
+            "stays in CPS while the value is invalid"
+        );
+        assert!(ui.get_settings_error().starts_with("Not applied"));
+        assert_eq!(app.config().click.interval_ms, 70);
+        // Back to 150 ms for the rest of the test.
+        ui.set_interval_text("6.67".into());
+        ui.invoke_settings_commit();
+        assert_eq!(app.config().click.interval_ms, 150);
+        ui.invoke_interval_unit_clicked();
+        assert_eq!(ui.get_interval_text(), "150");
+        assert_eq!(ui.get_settings_error(), "");
 
         step("clicking empty space outside an edited field commits it");
         let gui = main_window("Autoclicker").id;
@@ -453,6 +499,22 @@ mod imp {
             std::fs::metadata(path).unwrap().modified().unwrap(),
             writes_before
         );
+
+        step("switching tabs commits a pending edit");
+        type_interval(&[VK_1, VK_6, VK_5]);
+        pump_until("typed", Duration::from_secs(2), || {
+            ui.get_interval_text() == "165"
+        });
+        assert_eq!(app.config().click.interval_ms, 150);
+        ui.invoke_release_field_focus(); // what a tab click does first
+        ui.set_current_tab(1);
+        pump_until(
+            "committed by the tab switch",
+            Duration::from_secs(2),
+            || app.config().click.interval_ms == 165,
+        );
+        ui.set_current_tab(0);
+        pump(Duration::from_millis(100));
 
         step("a button action commits a pending edit first");
         type_interval(&[VK_1, VK_6, VK_0]);
@@ -757,7 +819,6 @@ mod imp {
         assert_eq!(shown.title, "Autoclicker");
         assert!(tray.get_window_visible());
         assert_eq!(ui.get_status(), RunStatus::Stopped);
-        assert_eq!(ui.get_status_detail(), "", "no click counter is shown");
         tray.invoke_toggle_window();
         pump_until("hidden again", Duration::from_secs(2), || {
             !app.window_visible()

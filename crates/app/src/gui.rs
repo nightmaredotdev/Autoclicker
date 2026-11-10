@@ -14,7 +14,7 @@
 
 #![forbid(unsafe_code)]
 
-use crate::form::{self, KeyInput, Status, TimingFields};
+use crate::form::{self, IntervalUnit, KeyInput, Status, TimingFields};
 use crate::runtime::{RebindError, Runtime, ShutdownReport, WaiterKind};
 use crate::ui::{AboutWindow, AppTray, HotkeyRow, MainWindow, RunStatus};
 use crate::{config_store, logging};
@@ -85,6 +85,8 @@ struct Controller {
     pick_remaining: Cell<i32>,
     notice_timer: Timer,
     capturing: Cell<Option<HotkeyAction>>,
+    /// How the interval is shown (display only; never saved).
+    interval_unit: Cell<IntervalUnit>,
     about: RefCell<Option<AboutWindow>>,
     report: Cell<Option<ShutdownReport>>,
     closed: Cell<bool>,
@@ -209,6 +211,7 @@ impl App {
             pick_remaining: Cell::new(0),
             notice_timer: Timer::default(),
             capturing: Cell::new(None),
+            interval_unit: Cell::new(IntervalUnit::Millis),
             about: RefCell::new(None),
             report: Cell::new(None),
             closed: Cell::new(false),
@@ -291,7 +294,10 @@ impl Controller {
         let config = self.config.borrow();
         ui.set_fixed_mode(config.click.mode == TargetMode::Fixed);
         ui.set_keep_on_top(config.window.always_on_top);
-        self.set_fields(ui, &TimingFields::from_config(&config.click));
+        self.set_fields(
+            ui,
+            &TimingFields::from_config(&config.click, self.interval_unit.get()),
+        );
         ui.set_config_warning(warnings.join("\n").into());
         drop(config);
         self.refresh_hotkeys(ui);
@@ -303,7 +309,7 @@ impl Controller {
         ui.set_jitter_text(f.jitter.as_str().into());
         ui.set_hold_text(f.hold.as_str().into());
         ui.set_radius_text(f.radius.as_str().into());
-        ui.set_rate_hint(form::rate_hint(f).into());
+        ui.set_interval_in_cps(f.interval_unit == IntervalUnit::Cps);
         ui.set_settings_error(SharedString::new());
         ui.set_settings_pending(false);
     }
@@ -328,6 +334,7 @@ impl Controller {
         on!(on_pick_target_clicked, |c| c.pick_target());
         on!(on_settings_edited, |c| c.settings_edited());
         on!(on_settings_commit, |c| c.settings_commit());
+        on!(on_interval_unit_clicked, |c| c.toggle_interval_unit());
         on!(on_hotkey_record, |c, index: i32| c.hotkey_record(index));
         on!(on_hotkey_key, |c,
                             text: SharedString,
@@ -473,7 +480,6 @@ impl Controller {
             Status::Error => RunStatus::Error,
         });
         ui.set_status_headline(view.headline.into());
-        ui.set_status_detail(view.detail.into());
         ui.set_error_text(view.error.into());
         ui.set_window_title(view.window_title.into());
         ui.set_target_text(view.target.into());
@@ -548,6 +554,7 @@ impl Controller {
     fn fields(&self, ui: &MainWindow) -> TimingFields {
         TimingFields {
             interval: ui.get_interval_text().into(),
+            interval_unit: self.interval_unit.get(),
             jitter: ui.get_jitter_text().into(),
             hold: ui.get_hold_text().into(),
             radius: ui.get_radius_text().into(),
@@ -557,7 +564,6 @@ impl Controller {
     fn settings_edited(&self) {
         self.with_ui(|ui| {
             let fields = self.fields(ui);
-            ui.set_rate_hint(form::rate_hint(&fields).into());
             let base = self.config.borrow().click.clone();
             match form::parse_timing(&fields, &base) {
                 Ok(c) => {
@@ -597,8 +603,13 @@ impl Controller {
             }
             Ok(c) => match self.apply_click(c) {
                 Ok(()) => {
-                    ui.set_settings_error(SharedString::new());
-                    ui.set_settings_pending(false);
+                    // Show the stored values (e.g. a CPS entry as the exact
+                    // rate of the whole-millisecond interval that was saved).
+                    let config = self.config.borrow().click.clone();
+                    self.set_fields(
+                        &ui,
+                        &TimingFields::from_config(&config, self.interval_unit.get()),
+                    );
                 }
                 Err(errors) => ui.set_settings_error(errors.join("\n").into()),
             },
@@ -610,6 +621,24 @@ impl Controller {
                 .into(),
             ),
         }
+    }
+
+    /// Switches the interval between milliseconds and clicks per second. A
+    /// pending edit is committed first; if it is invalid the unit stays (and
+    /// the error stays visible). The shown value is always derived from the
+    /// stored milliseconds, so toggling can never drift.
+    fn toggle_interval_unit(&self) {
+        self.commit_pending_edits();
+        let Some(ui) = self.ui.upgrade() else { return };
+        if ui.get_settings_pending() {
+            return;
+        }
+        self.interval_unit.set(self.interval_unit.get().toggled());
+        let config = self.config.borrow().click.clone();
+        self.set_fields(
+            &ui,
+            &TimingFields::from_config(&config, self.interval_unit.get()),
+        );
     }
 
     // ---------------------------------------------------------------- target
@@ -681,11 +710,11 @@ impl Controller {
             })
             .collect();
         ui.set_hotkeys(ModelRc::new(VecModel::from(rows)));
-        ui.set_toggle_hint(
+        ui.set_toggle_key(
             config
                 .hotkeys
                 .toggle
-                .map(|h| format!("or press {h}"))
+                .map(|h| h.to_string())
                 .unwrap_or_default()
                 .into(),
         );

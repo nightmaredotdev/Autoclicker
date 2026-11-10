@@ -22,10 +22,10 @@ To update, close Autoclicker (tray icon > Exit) and replace the folder with the 
 
 ## Usage
 
-Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error), the measured click rate while running, and a Start/Stop button.
+Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error) and a Start/Stop button labelled with the toggle hotkey, e.g. **Start (F6)**. Settings are on the **Settings** tab (sections *Target* and *Timing*), hotkeys on the **Hotkeys** tab.
 
-- **Where to click:** *Fixed target* moves to a saved point before each click. Use **Pick target** (a 3-second countdown to move the cursor) or the set-target hotkey. *Current cursor* clicks wherever the cursor is, without moving it.
-- **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Each setting has a short description under its name. Changes apply when you press Enter, click anywhere outside the field, switch tabs or use a button. Invalid values are explained and never applied; the previous value stays active.
+- **Target:** *Fixed target* moves to a saved point before each click. Use **Pick target** (a 3-second countdown to move the cursor) or the set-target hotkey. *Current cursor* clicks wherever the cursor is, without moving it.
+- **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Each setting has a short description under its name. Click the interval's unit to switch between milliseconds (`ms`) and clicks per second (`CPS`); the stored interval is always whole milliseconds, so switching never changes it. Position jitter applies to fixed-target mode only and is disabled otherwise. Changes apply when you press Enter, click anywhere outside the field, switch tabs or use a button. Invalid values are explained and never applied; the previous value stays active.
 - **Hotkeys:** three global hotkeys (toggle start/stop, set target, exit). Click a binding and press the new combination (Esc cancels). Function keys may be used alone; letters, digits and navigation keys need Ctrl or Alt. F12 is reserved by Windows.
 - **Always on top**, **Logs** (opens the log folder), **About** and **Exit** are at the bottom of the window.
 - **Closing the window hides it** to the notification area; clicking and hotkeys keep working. The tray icon (green dot while clicking) can show/hide the window, start/stop clicking, open the logs and exit. On Windows 10 the icon may start in the overflow area (^ next to the clock); drag it to the taskbar to keep it visible.
@@ -35,7 +35,7 @@ Default settings:
 
 | Setting | Default |
 |---|---|
-| Where to click | Fixed target (set it with **Pick target** or F7 before starting) |
+| Target | Fixed target (set it with **Pick target** or F7 before starting) |
 | Interval (start to start) | 100 ms (about 10 clicks per second); allowed 10 ms to 1 hour |
 | Interval jitter | Gaussian, standard deviation 10 ms, truncated at ±3σ (so 70-130 ms) |
 | Hold duration | 10 ms (0 is allowed) |
