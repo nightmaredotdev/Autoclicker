@@ -55,6 +55,16 @@ try {
     $notices = Get-Content -LiteralPath (Join-Path $folder 'THIRD-PARTY-NOTICES.txt') -Raw
     if (-not $notices.Contains('Slint Royalty-free') -or -not $notices.Contains('Apache License')) { Fail 'third-party notices incomplete' }
     Ok "third-party notices include the Slint license and license texts ($([math]::Round($notices.Length / 1MB, 1)) MB)"
+    $normalizedNotices = $notices.Replace("`r`n", "`n")
+    foreach ($dir in @(Get-ChildItem -LiteralPath (Join-Path $root 'packaging\licenses') -Directory)) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $dir.FullName -File | Where-Object { $_.Name -ne 'SOURCE.txt' })) {
+            $license = [System.IO.File]::ReadAllText($file.FullName).Replace("`r`n", "`n").TrimEnd()
+            $header = "`n$($dir.Name -replace '-(\d[^-]*)$', ' $1')`n"
+            if (-not $normalizedNotices.Contains($header)) { Fail "notices lack the section for $($dir.Name)" }
+            if (-not $normalizedNotices.Contains("--- $($file.Name) ---`n$license`n")) { Fail "notices lack $($dir.Name)/$($file.Name)" }
+            Ok "supplementary license included verbatim: $($dir.Name)/$($file.Name)"
+        }
+    }
 
     # ---- executable metadata ----------------------------------------------------
     $exe = Join-Path $folder 'autoclicker.exe'

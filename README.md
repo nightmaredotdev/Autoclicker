@@ -1,7 +1,7 @@
 # Autoclicker
 A customizable desktop autoclicker with configurable click timing, human-like input variation, target positioning, and hotkeys. Built with cross-platform support in mind.
 
-> **Status:** early development. Windows desktop utility with a Slint GUI, notification-area icon and a portable release package.
+> **Status:** stable (1.0). A portable Windows desktop utility: no installer, no administrator rights.
 
 ## Platform support
 
@@ -9,6 +9,16 @@ A customizable desktop autoclicker with configurable click timing, human-like in
 |---|---|
 | Windows 10/11 (x86_64) | Initial target. Verified on Windows 10 22H2 only; see the [M1](docs/m1-verification.md), [M2](docs/m2-verification.md) and [M3](docs/m3-verification.md) verification records. |
 | Linux | Not supported yet. The architecture keeps OS-specific code isolated so a backend can be added later. |
+
+## Download and install
+
+1. Download `Autoclicker-<version>-windows-x64.zip` from the [Releases](https://github.com/nightmaredotdev/Autoclicker/releases) page.
+2. Extract the ZIP to any folder you like (for example your Desktop or a USB drive). No installation or administrator rights are needed.
+3. Run `autoclicker.exe` from the extracted folder.
+
+**The executable is not code-signed.** The first time you run it, Windows SmartScreen may show "Windows protected your PC". Choose **More info**, then **Run anyway**, if you trust the download. Each release lists the ZIP's SHA-256 checksum so you can verify the file (`Get-FileHash Autoclicker-<version>-windows-x64.zip` in PowerShell).
+
+To update, close Autoclicker (tray icon > Exit) and replace the folder with the new version. Your settings are kept. To uninstall, delete the folder, and optionally `%APPDATA%\Autoclicker` (settings) and `%LOCALAPPDATA%\Autoclicker` (logs).
 
 ## Usage
 
@@ -20,6 +30,17 @@ Start `autoclicker.exe`. The window shows the current state (Stopped / Running /
 - **Always on top**, **Logs** (opens the log folder), **About** and **Exit** are at the bottom of the window.
 - **Closing the window hides it** to the notification area; clicking and hotkeys keep working. The tray icon (green dot while clicking) can show/hide the window, start/stop clicking, open the logs and exit. On Windows 10 the icon may start in the overflow area (^ next to the clock); drag it to the taskbar to keep it visible.
 - **One instance:** starting Autoclicker again brings the running window to the front.
+
+Default settings:
+
+| Setting | Default |
+|---|---|
+| Where to click | Fixed target (set it with **Pick target** or F7 before starting) |
+| Interval (start to start) | 100 ms (about 10 clicks per second); allowed 10 ms to 1 hour |
+| Interval jitter | Gaussian, standard deviation 10 ms, truncated at ±3σ (so 70-130 ms) |
+| Hold duration | 10 ms (0 is allowed) |
+| Position jitter | 3 px radius around the fixed target (0-50 px) |
+| Always on top | Off |
 
 | Default hotkey | Action |
 |---|---|
@@ -34,6 +55,8 @@ Settings are saved to `%APPDATA%\Autoclicker\config.toml`. A file that cannot be
 
 ### Limitations
 
+- The executable is not code-signed, so Windows SmartScreen may warn the first time it runs (see above).
+- Verified on Windows 10 22H2 with a single monitor at 100 % scaling. Windows 11, other scaling factors and multi-monitor setups are expected to work but have not been tested.
 - Windows' privilege isolation blocks clicks into applications running as administrator unless the autoclicker is elevated too, and Windows does not report the failure.
 - If the process is killed (for example from Task Manager) while a button is held down, nothing can release it. Click that mouse button once to clear it.
 - Some applications deliberately ignore injected input.

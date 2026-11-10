@@ -36,7 +36,7 @@ with `-NoBuild`) and writes
 | `autoclicker.exe` | The application |
 | `README.txt` | Usage, file locations, limitations (`packaging/README.txt`) |
 | `LICENSE.txt` | MIT license |
-| `THIRD-PARTY-NOTICES.txt` | The Slint license notice, every crate used to build the executable with its declared license, the license files from its package, and the Apache-2.0 text |
+| `THIRD-PARTY-NOTICES.txt` | The Slint license notice, every crate used to build the executable with its declared license, the license files from its package (or from `packaging/licenses/`), and the Apache-2.0 text |
 | `VERSION.txt` | Version, commit, commit date, target |
 
 `verify-package.ps1` checks:
@@ -67,5 +67,10 @@ not publish anything.
 * No code signing: Windows SmartScreen may ask for confirmation on first
   run.
 * No installer, updater or GitHub Release publication.
-* 15 of the 290 crates ship no license file in their package. They are
-  listed with their declared license and source repository.
+* Some crates publish their packages without a license file. Where a
+  crate's license requires its notice in binary distributions (taffy, MIT),
+  the unmodified upstream file is kept in `packaging/licenses/` (see the
+  README there) and included. The others are listed with their declared
+  license and source: Apache-2.0 or "MIT OR Apache-2.0" (Apache-2.0 text
+  included), BSL-1.0 (binary distribution exempt), or crates that are not
+  compiled into the Windows executable.

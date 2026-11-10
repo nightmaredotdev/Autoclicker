@@ -71,6 +71,7 @@ $crates = $seen | ForEach-Object { $byId[$_] } |
 $licensePattern = '^(LICEN[CS]E|COPYING|COPYRIGHT|NOTICE|UNLICENSE)([-._].*)?$'
 $apacheText = $null
 $missing = 0
+$supplemented = 0
 $notices = New-Object System.Text.StringBuilder
 [void]$notices.Append("Third-party notices for Autoclicker $version`n")
 [void]$notices.Append("=" * 60 + "`n`n")
@@ -106,6 +107,19 @@ foreach ($c in $crates) {
     if ($null -eq $apacheText) {
         $apache = $files | Where-Object { $_.Name -like 'LICENSE-APACHE*' -or $_.Name -eq 'Apache-2.0.txt' } | Select-Object -First 1
         if ($apache) { $apacheText = [System.IO.File]::ReadAllText($apache.FullName).Replace("`r`n", "`n").TrimEnd() }
+    }
+    if ($files.Count -eq 0) {
+        # Supplementary upstream license files for crates published without one.
+        $supplement = Join-Path $root "packaging\licenses\$($c.name)-$($c.version)"
+        if (Test-Path -LiteralPath $supplement) {
+            $source = Join-Path $supplement 'SOURCE.txt'
+            if (Test-Path -LiteralPath $source) {
+                $origin = [System.IO.File]::ReadAllText($source).Replace("`r`n", "`n").TrimEnd()
+                [void]$notices.Append("`n$origin`n")
+            }
+            $files = @(Get-ChildItem -LiteralPath $supplement -File | Where-Object { $_.Name -ne 'SOURCE.txt' } | Sort-Object Name)
+            $supplemented += 1
+        }
     }
     if ($files.Count -eq 0) {
         $missing += 1
@@ -158,6 +172,6 @@ try {
 
 $hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash
 Write-Output "Created $zipPath"
-Write-Output "  crates listed in THIRD-PARTY-NOTICES.txt: $($crates.Count) ($missing without a license file in their package)"
+Write-Output "  crates listed in THIRD-PARTY-NOTICES.txt: $($crates.Count) ($supplemented with license files from packaging\licenses, $missing without a license file)"
 Write-Output "  SHA-256: $hash"
 if ($dirty) { Write-Output "  note: the working tree has uncommitted changes" }

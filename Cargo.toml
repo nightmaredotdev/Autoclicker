@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/core", "crates/platform", "crates/app"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
 # Oldest toolchain this workspace has actually been built with (Slint 1.18 itself needs >= 1.92).
 rust-version = "1.97"
