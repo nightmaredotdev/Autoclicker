@@ -1,0 +1,5 @@
+# Reproducible Windows executables: without /Brepro the MSVC linker stamps
+# the build time into the PE header, so identical sources would produce
+# different binaries (and different release packages).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/Brepro"]

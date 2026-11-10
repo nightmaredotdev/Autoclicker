@@ -500,3 +500,41 @@ fn fixed_target_clicks_land_within_the_jitter_radius() {
     }
     assert!(downs.iter().any(|p| *p != target), "jitter was applied");
 }
+
+// ------------------------------------------------------------------- session end
+
+#[test]
+#[ignore = "needs an interactive, unlocked Windows desktop"]
+fn session_end_runs_the_callback_before_returning() {
+    let _g = setup();
+    let name = format!("AutoclickerTest.session.{}", std::process::id());
+    let Acquire::Acquired(lock) = acquire_instance(&name).unwrap() else {
+        panic!("acquire");
+    };
+    let ran = Arc::new(Mutex::new(None::<Instant>));
+    let r = ran.clone();
+    let events = SystemEvents::start(
+        &lock,
+        || {},
+        move || {
+            // Simulate a shutdown that takes a moment.
+            std::thread::sleep(Duration::from_millis(150));
+            *r.lock().unwrap() = Some(Instant::now());
+        },
+    )
+    .unwrap();
+    let window = windows_of_process(std::process::id())
+        .into_iter()
+        .find(|w| w.title == SYSTEM_EVENTS_WINDOW_TITLE)
+        .expect("hidden system-events window");
+    assert!(!window.visible);
+    let reply = simulate_session_end(window.id, Duration::from_secs(5));
+    let returned = Instant::now();
+    assert_eq!(reply, Some(1), "logoff/shutdown is not blocked");
+    let ran_at = ran.lock().unwrap().expect("session-end callback ran");
+    assert!(
+        ran_at <= returned,
+        "WM_ENDSESSION returned before the shutdown finished"
+    );
+    assert_eq!(events.shutdown(Duration::from_secs(2)), ThreadExit::Clean);
+}

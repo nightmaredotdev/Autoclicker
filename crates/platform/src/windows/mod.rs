@@ -9,6 +9,7 @@ mod error;
 mod handle;
 mod hotkeys;
 mod input;
+mod instance;
 mod keys;
 mod message;
 mod waiter;
@@ -24,6 +25,10 @@ pub use dpi::{enable_per_monitor_dpi_awareness, is_per_monitor_v2};
 pub use error::Win32Error;
 pub use hotkeys::{HotkeyEvent, HotkeyService, Registration};
 pub use input::{INJECTION_SIGNATURE, WindowsInput, buttons_swapped};
+pub use instance::{
+    Acquire, InstanceLock, SYSTEM_EVENTS_WINDOW_TITLE, SystemEvents, acquire_instance,
+    activate_own_window,
+};
 pub use keys::virtual_key;
 pub use message::show_error_message;
 pub use waiter::HighResWaiter;

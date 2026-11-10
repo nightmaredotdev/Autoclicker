@@ -11,6 +11,8 @@ pub mod form;
 #[cfg(windows)]
 pub mod gui;
 #[cfg(windows)]
+pub mod logging;
+#[cfg(windows)]
 pub mod runtime;
 
 /// Code generated from `ui/app.slint`. Generated code is exempt from the

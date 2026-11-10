@@ -565,6 +565,47 @@ pub fn windows_of_process(pid: u32) -> Vec<WindowInfo> {
         .collect()
 }
 
+/// Simulates the end of the Windows session for `window`: sends
+/// `WM_QUERYENDSESSION`, then `WM_ENDSESSION` (session ending), each with a
+/// timeout. Returns the reply to the query (non-zero = may end), or `None`
+/// if a message timed out or failed.
+pub fn simulate_session_end(window: WindowId, timeout: Duration) -> Option<isize> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_ENDSESSION, WM_QUERYENDSESSION,
+    };
+    let ms = u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX);
+    let mut reply = 0usize;
+    // SAFETY: valid out-pointer; the handle is validated by the function.
+    let ok = unsafe {
+        SendMessageTimeoutW(
+            window.0 as HWND,
+            WM_QUERYENDSESSION,
+            0,
+            0,
+            SMTO_ABORTIFHUNG,
+            ms,
+            &mut reply,
+        )
+    };
+    if ok == 0 {
+        return None;
+    }
+    let mut ignored = 0usize;
+    // SAFETY: as above; wParam 1 = the session is ending.
+    let ok = unsafe {
+        SendMessageTimeoutW(
+            window.0 as HWND,
+            WM_ENDSESSION,
+            1,
+            0,
+            SMTO_ABORTIFHUNG,
+            ms,
+            &mut ignored,
+        )
+    };
+    (ok != 0).then_some(reply as isize)
+}
+
 /// Posts `WM_CLOSE` to a window (what the title bar's close button does).
 pub fn post_close(window: WindowId) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};

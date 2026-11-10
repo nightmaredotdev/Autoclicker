@@ -115,6 +115,7 @@ export component AboutWindow inherits Window {
     in property <string> version;
     callback close-clicked();
     title: "About Autoclicker";
+    icon: @image-url("../../../assets/icon/icon-256.png");
     min-width: 380px;
     preferred-width: 380px;
     VerticalBox {
@@ -191,10 +192,13 @@ export component MainWindow inherits Window {
     callback hotkey-clear(int);
     callback keep-on-top-toggled(bool);
     callback about-clicked();
+    callback open-logs-clicked();
+    callback exit-clicked();
     callback warning-dismissed();
     // ---- wake-ups from worker threads (invoked via the event loop) ----
     callback status-ready();
     callback exit-requested();
+    callback show-requested();
 
     public function start-recording(index: int) {
         root.capturing-index = index;
@@ -203,6 +207,7 @@ export component MainWindow inherits Window {
     }
 
     title: root.window-title;
+    icon: @image-url("../../../assets/icon/icon-256.png");
     always-on-top: root.keep-on-top;
     min-width: 400px;
     preferred-width: 420px;
@@ -447,9 +452,55 @@ export component MainWindow inherits Window {
             }
             Rectangle { horizontal-stretch: 1; }
             Button {
+                text: "Logs";
+                clicked => { root.open-logs-clicked(); }
+            }
+            Button {
                 text: "About";
                 clicked => { root.about-clicked(); }
             }
+            Button {
+                text: "Exit";
+                clicked => { root.exit-clicked(); }
+            }
+        }
+    }
+}
+
+// Notification-area icon. Closing the main window hides it; the tray keeps
+// the application reachable and offers an explicit Exit.
+export component AppTray inherits SystemTrayIcon {
+    in property <bool> running;
+    in property <bool> window-visible: true;
+    callback show-window();
+    callback toggle-window();
+    callback start-stop();
+    callback open-logs();
+    callback exit();
+
+    icon: root.running ? @image-url("../../../assets/icon/tray-running.png") : @image-url("../../../assets/icon/tray-idle.png");
+    tooltip: root.running ? "Autoclicker - running" : "Autoclicker - stopped";
+    title: "Autoclicker";
+    clicked => { root.show-window(); }
+
+    Menu {
+        MenuItem {
+            title: root.window-visible ? "Hide window" : "Show window";
+            activated => { root.toggle-window(); }
+        }
+        MenuItem {
+            title: root.running ? "Stop clicking" : "Start clicking";
+            activated => { root.start-stop(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Open log folder";
+            activated => { root.open-logs(); }
+        }
+        MenuSeparator { }
+        MenuItem {
+            title: "Exit";
+            activated => { root.exit(); }
         }
     }
 }

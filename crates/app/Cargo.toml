@@ -12,11 +12,13 @@ publish.workspace = true
 autoclicker-core.workspace = true
 autoclicker-platform.workspace = true
 directories.workspace = true
+log.workspace = true
 slint.workspace = true
 toml.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true
+winresource.workspace = true
 
 [dev-dependencies]
 # Integration tests observe injected input with the platform's test helpers.

@@ -33,6 +33,8 @@ slint = { version = "=1.18.1", default-features = false, features = [
 ] }
 
 slint-build = "=1.18.1"
+winresource = { version = "0.1.34", default-features = false }
+log = "0.4"
 
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

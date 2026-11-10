@@ -33,10 +33,10 @@ mod imp {
     use autoclicker_core::keys::{Hotkey, Key, Modifiers};
     use autoclicker_platform::diagnostics::{
         HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, cursor_position,
-        force_foreground, foreground_window, monitors, send_keys, windows_of_process,
+        force_foreground, foreground_window, monitors, post_close, send_keys, windows_of_process,
     };
     use autoclicker_platform::{HotkeyService, WindowsInput};
-    use slint::{ComponentHandle, Model, Timer, TimerMode};
+    use slint::{Model, Timer, TimerMode};
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
@@ -114,6 +114,7 @@ mod imp {
         GuiOptions {
             config_path: Some(path.to_path_buf()),
             waiter: WaiterKind::HighResolution,
+            log_dir: None,
         }
     }
 
@@ -220,7 +221,7 @@ mod imp {
         step("launch");
         let app = App::new(options(path)).expect("app starts");
         let ui = app.ui();
-        ui.show().unwrap();
+        app.show_window();
         pump(Duration::from_millis(500));
         let win = main_window("Autoclicker");
         assert_eq!(win.title, "Autoclicker");
@@ -578,6 +579,82 @@ mod imp {
         });
         drop(other_window);
 
+        step("closing the window hides it to the tray; clicking continues");
+        let tray = app.tray().expect("notification-area icon");
+        assert!(tray.get_window_visible());
+        assert!(!tray.get_running());
+        recorder.clear();
+        ui.invoke_start_stop_clicked();
+        pump_until("clicking", Duration::from_secs(5), || {
+            downs(&recorder.events()) >= 2
+        });
+        assert!(tray.get_running(), "tray reflects the running state");
+        assert!(post_close(main_window("Autoclicker").id), "WM_CLOSE posted");
+        pump_until("hidden", Duration::from_secs(2), || !app.window_visible());
+        assert!(
+            !own_windows()
+                .iter()
+                .any(|w| w.visible && w.title.starts_with("Autoclicker")),
+            "main window hidden"
+        );
+        assert!(!tray.get_window_visible());
+        let before = downs(&recorder.events());
+        pump(Duration::from_millis(500));
+        assert!(
+            downs(&recorder.events()) > before,
+            "still clicking while hidden"
+        );
+        assert_eq!(ui.get_status(), RunStatus::Running);
+
+        step("global hotkey works while hidden");
+        let other_window = TestWindow::create(r, WindowKind::TopmostPopup, "hidden test").unwrap();
+        focus(other_window.id());
+        press(other_window.id(), &tap(VK_F13));
+        pump_until(
+            "stopped via hotkey while hidden",
+            Duration::from_secs(3),
+            || ui.get_status() == RunStatus::Stopped,
+        );
+        assert!(!tray.get_running());
+        drop(other_window);
+
+        step("tray: start and stop clicking while hidden");
+        recorder.clear();
+        tray.invoke_start_stop();
+        pump_until("running via tray", Duration::from_secs(3), || {
+            tray.get_running() && downs(&recorder.events()) >= 2
+        });
+        tray.invoke_start_stop();
+        pump_until("stopped via tray", Duration::from_secs(3), || {
+            !tray.get_running()
+        });
+        pump(Duration::from_millis(200));
+        assert_paired(&recorder.events());
+
+        step("tray: show restores a usable window");
+        tray.invoke_toggle_window();
+        let titled = || {
+            own_windows()
+                .iter()
+                .any(|w| w.visible && w.title.starts_with("Autoclicker"))
+        };
+        pump_until("shown with its title", Duration::from_secs(3), || {
+            app.window_visible() && titled()
+        });
+        let shown = main_window("Autoclicker");
+        assert_eq!(shown.title, "Autoclicker");
+        assert!(tray.get_window_visible());
+        assert_eq!(ui.get_status(), RunStatus::Stopped);
+        assert!(ui.get_status_detail().contains("clicks in total"));
+        tray.invoke_toggle_window();
+        pump_until("hidden again", Duration::from_secs(2), || {
+            !app.window_visible()
+        });
+        tray.invoke_show_window(); // left click on the icon
+        pump_until("shown by click", Duration::from_secs(3), || {
+            app.window_visible() && titled()
+        });
+
         step("about dialog with Slint attribution");
         ui.invoke_about_clicked();
         pump_until("about window", Duration::from_secs(2), || {
@@ -586,13 +663,14 @@ mod imp {
                 .any(|w| w.visible && w.title == "About Autoclicker")
         });
 
-        step("closing while clicking stops the engine and shuts down completely");
+        step("tray Exit while clicking stops the engine and shuts down completely");
         recorder.clear();
         ui.invoke_start_stop_clicked();
         pump_until("clicks", Duration::from_secs(5), || {
             downs(&recorder.events()) >= 2
         });
-        let report = app.close().expect("shutdown report");
+        tray.invoke_exit();
+        let report = app.shutdown_report().expect("tray Exit shut down");
         assert!(report.is_clean(), "{report:?}");
         assert_eq!(app.close(), Some(report), "close is idempotent");
         pump(Duration::from_millis(300));
@@ -624,7 +702,7 @@ mod imp {
         step("settings persist across restarts");
         let app = App::new(options(path)).expect("app restarts");
         let ui = app.ui();
-        ui.show().unwrap();
+        app.show_window();
         pump(Duration::from_millis(300));
         assert_eq!(ui.get_config_warning(), "");
         assert_eq!(ui.get_interval_text(), "150");

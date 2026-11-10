@@ -38,6 +38,15 @@ jobs:
       - name: Release build
         run: cargo build --workspace --release --locked
 
+      # Portable ZIP: built and verified (contents, metadata, reproducibility),
+      # never published.
+      - name: Package
+        shell: powershell
+        run: ./scripts/package.ps1 -NoBuild
+      - name: Verify package
+        shell: powershell
+        run: ./scripts/verify-package.ps1 -Reproducible
+
       - name: Verify Slint renderer selection
         shell: bash
         run: |
