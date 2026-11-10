@@ -370,6 +370,81 @@ mod imp {
         assert_eq!(app.config().click.interval_ms, 150);
         assert_eq!(saved(path).click.interval_ms, 150);
 
+        step("position jitter radius: validated, applied by the engine and saved");
+        ui.set_radius_text("51".into());
+        ui.invoke_settings_edited();
+        assert!(
+            ui.get_settings_error()
+                .contains("51 px exceeds the maximum of 50 px"),
+            "{}",
+            ui.get_settings_error()
+        );
+        ui.invoke_settings_commit();
+        assert!(ui.get_settings_error().starts_with("Not applied"));
+        assert_eq!(app.config().click.position_jitter_radius_px, 3);
+        assert_eq!(saved(path).click.position_jitter_radius_px, 3);
+
+        ui.set_radius_text("0".into());
+        ui.invoke_settings_commit();
+        assert_eq!(ui.get_settings_error(), "");
+        assert_eq!(app.config().click.position_jitter_radius_px, 0);
+        assert_eq!(saved(path).click.position_jitter_radius_px, 0);
+        let target = app.config().click.target.expect("target set earlier");
+        recorder.clear();
+        ui.invoke_start_stop_clicked();
+        pump_until("clicks", Duration::from_secs(5), || {
+            downs(&recorder.events()) >= 5
+        });
+        ui.invoke_start_stop_clicked();
+        pump_until("stopped", Duration::from_secs(2), || {
+            ui.get_status() == RunStatus::Stopped
+        });
+        pump(Duration::from_millis(200));
+        let events = recorder.events();
+        assert_paired(&events);
+        assert!(
+            events
+                .iter()
+                .filter(|e| e.message.is_down())
+                .all(|e| e.point == target),
+            "radius 0 must click exactly on the target"
+        );
+
+        ui.set_radius_text("8".into());
+        ui.invoke_settings_commit();
+        assert_eq!(ui.get_settings_error(), "");
+        assert_eq!(app.config().click.position_jitter_radius_px, 8);
+        assert_eq!(saved(path).click.position_jitter_radius_px, 8);
+        recorder.clear();
+        ui.invoke_start_stop_clicked();
+        pump_until("clicks", Duration::from_secs(10), || {
+            downs(&recorder.events()) >= 30
+        });
+        ui.invoke_start_stop_clicked();
+        pump_until("stopped", Duration::from_secs(2), || {
+            ui.get_status() == RunStatus::Stopped
+        });
+        pump(Duration::from_millis(200));
+        let events = recorder.events();
+        assert_paired(&events);
+        let distances: Vec<i32> = events
+            .iter()
+            .filter(|e| e.message.is_down())
+            .map(|e| {
+                let (dx, dy) = (e.point.x - target.x, e.point.y - target.y);
+                dx * dx + dy * dy
+            })
+            .collect();
+        assert!(
+            distances.iter().all(|&d| d <= 64),
+            "outside the 8 px radius: {distances:?}"
+        );
+        assert!(
+            distances.iter().any(|&d| d > 9),
+            "the larger radius was not applied (all within 3 px): {distances:?}"
+        );
+        recorder.clear();
+
         step("always on top is applied to the real window and saved");
         ui.set_keep_on_top(true);
         ui.invoke_keep_on_top_toggled(true);
@@ -553,6 +628,8 @@ mod imp {
         pump(Duration::from_millis(300));
         assert_eq!(ui.get_config_warning(), "");
         assert_eq!(ui.get_interval_text(), "150");
+        assert_eq!(ui.get_radius_text(), "8");
+        assert_eq!(app.config().click.position_jitter_radius_px, 8);
         assert!(ui.get_fixed_mode());
         assert!(!ui.get_keep_on_top());
         assert_ne!(ui.get_target_text(), "Not set");

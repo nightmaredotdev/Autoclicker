@@ -12,7 +12,7 @@ machine as [M1](m1-verification.md): Windows 10 22H2 (build 19045), one
 | Platform unit tests | `cargo test -p autoclicker-platform` | 16 passed |
 | App unit tests (form logic, settings store) | `cargo test -p autoclicker --lib` | 15 passed |
 | Runtime integration (real desktop) | `cargo test -p autoclicker --lib -- --ignored --test-threads=1` | 5 passed |
-| GUI integration, in process (real window) | `cargo test -p autoclicker --test gui -- --ignored` | 20 checks passed |
+| GUI integration, in process (real window) | `cargo test -p autoclicker --test gui -- --ignored` | 21 checks passed |
 | GUI end to end, real executable | `cargo test -p autoclicker --test gui_process -- --ignored --test-threads=1` | 3 passed (2 consecutive runs) |
 | Platform integration (real desktop) | `cargo test -p autoclicker-platform -- --ignored --test-threads=1` | 10 passed |
 
@@ -35,7 +35,8 @@ recorded from real key presses injected into the focused window.
 | Start/stop via the GUI | Start/Stop button: the status changes to Running, the title to "Autoclicker - Running", and back again |
 | Hotkeys while unfocused | With another window in the foreground, the toggle hotkey starts and stops clicking and the GUI follows (also run against the real exe) |
 | Target capture | "Pick target" countdown (3 s, real timer) and direct capture: the displayed coordinates match the cursor position, and the target is saved |
-| Persistence across restarts | Interval, mode, target, always-on-top and hotkeys survive a restart (in process and real exe) |
+| Persistence across restarts | Interval, position jitter radius, mode, target, always-on-top and hotkeys survive a restart (in process and real exe) |
+| Position jitter radius | Editing the field: 51 px is rejected by the core rule (maximum 50) and not applied. 0 px makes every click land exactly on the target. 8 px keeps clicks within 8 px and some land beyond 3 px, which proves the edited value reached the engine. The value is saved and restored after a restart |
 | Invalid settings | Out-of-range interval, a hold that does not fit, and non-numeric input each give a specific message. Nothing is applied or saved; the previous settings stay active |
 | Hotkey problems | A typing key without Ctrl/Alt is refused and recording continues. Esc cancels. A saved binding that another program holds is shown as "Unavailable" at startup |
 | Always on top | Toggling sets and clears `WS_EX_TOPMOST` on the real window and is saved. The real exe starts topmost when the setting is on |
