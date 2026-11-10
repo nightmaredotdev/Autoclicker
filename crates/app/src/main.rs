@@ -1,22 +1,15 @@
-//! Autoclicker desktop application.
-//!
-//! This milestone is headless: it runs from a console with the default
-//! settings and global hotkeys, printing status and errors. The Slint user
-//! interface is added in a later milestone.
+//! Autoclicker desktop application entry point.
 
+// Release builds are GUI applications without a console window.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![forbid(unsafe_code)]
-
-#[cfg(windows)]
-mod console;
-#[cfg(windows)]
-mod runtime;
 
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     #[cfg(windows)]
     {
-        console::run(std::env::args().skip(1).collect())
+        autoclicker::gui::run()
     }
     #[cfg(not(windows))]
     {

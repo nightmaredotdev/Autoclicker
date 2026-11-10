@@ -508,6 +508,70 @@ pub fn window_at(p: Point) -> WindowId {
     WindowId(hwnd as usize)
 }
 
+/// A top-level window, as seen from outside its process.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowInfo {
+    pub id: WindowId,
+    pub title: String,
+    pub visible: bool,
+    /// `WS_EX_TOPMOST` is set (always on top).
+    pub topmost: bool,
+}
+
+unsafe extern "system" fn collect_window(hwnd: HWND, data: LPARAM) -> windows_sys::core::BOOL {
+    // SAFETY: `data` is the `&mut Vec<usize>` passed to EnumWindows.
+    let out = unsafe { &mut *(data as *mut Vec<usize>) };
+    out.push(hwnd as usize);
+    1
+}
+
+/// Top-level windows owned by process `pid`.
+pub fn windows_of_process(pid: u32) -> Vec<WindowInfo> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GWL_EXSTYLE, GetWindowLongPtrW, GetWindowTextW, IsWindowVisible,
+    };
+    let mut handles: Vec<usize> = Vec::new();
+    // SAFETY: the callback only pushes into `handles`, which outlives the call.
+    unsafe {
+        EnumWindows(
+            Some(collect_window),
+            &mut handles as *mut Vec<usize> as LPARAM,
+        )
+    };
+    handles
+        .into_iter()
+        .filter_map(|h| {
+            let hwnd = h as HWND;
+            let mut owner = 0u32;
+            // SAFETY: valid out-pointer; a stale handle just yields 0.
+            unsafe { GetWindowThreadProcessId(hwnd, &mut owner) };
+            if owner != pid {
+                return None;
+            }
+            let mut buf = [0u16; 256];
+            // SAFETY: the buffer pointer and length describe a writable buffer.
+            let len = unsafe { GetWindowTextW(hwnd, buf.as_mut_ptr(), buf.len() as i32) };
+            // SAFETY: no pointer arguments.
+            let visible = unsafe { IsWindowVisible(hwnd) } != 0;
+            // SAFETY: no pointer arguments.
+            let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+            Some(WindowInfo {
+                id: WindowId(h),
+                title: String::from_utf16_lossy(&buf[..len.max(0) as usize]),
+                visible,
+                topmost: ex_style & WS_EX_TOPMOST != 0,
+            })
+        })
+        .collect()
+}
+
+/// Posts `WM_CLOSE` to a window (what the title bar's close button does).
+pub fn post_close(window: WindowId) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+    // SAFETY: PostMessageW validates the handle; a stale one just fails.
+    unsafe { PostMessageW(window.0 as HWND, WM_CLOSE, 0, 0) != 0 }
+}
+
 // ---------------------------------------------------------------- keyboard
 
 /// Injects key transitions (`(virtual key, is_release)`) as one batch, tagged

@@ -20,6 +20,7 @@ fn settings(f: impl FnOnce(&mut ClickConfig)) -> ClickSettings {
         interval_jitter_sigma_ms: 0.0,
         hold_ms: 10,
         position_jitter_radius_px: 0,
+        target: None,
     };
     f(&mut c);
     c.validated().unwrap()
@@ -632,4 +633,23 @@ fn metrics_are_delivered_even_when_the_next_click_is_far_away() {
         first_click < out.updates.len() - 1,
         "published before shutdown"
     );
+}
+
+#[test]
+fn an_explicit_target_is_used_without_reading_the_cursor() {
+    let s = settings(|c| c.mode = TargetMode::Fixed);
+    let mut h = Harness::new(s);
+    h.backend.panic_on_cursor_query = true; // must not be consulted
+    let out = h
+        .script(vec![
+            cmd(0, Command::SetTarget(Point::new(100, 200))),
+            cmd(1, start()),
+            cmd(150, Command::Shutdown),
+        ])
+        .run();
+    assert_eq!(
+        out.moves(),
+        vec![Point::new(100, 200), Point::new(100, 200)]
+    );
+    assert_eq!(out.last().target, Some(Point::new(100, 200)));
 }

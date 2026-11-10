@@ -10,6 +10,7 @@ mod handle;
 mod hotkeys;
 mod input;
 mod keys;
+mod message;
 mod waiter;
 
 #[cfg(any(test, feature = "diagnostics"))]
@@ -24,4 +25,5 @@ pub use error::Win32Error;
 pub use hotkeys::{HotkeyEvent, HotkeyService, Registration};
 pub use input::{INJECTION_SIGNATURE, WindowsInput, buttons_swapped};
 pub use keys::virtual_key;
+pub use message::show_error_message;
 pub use waiter::HighResWaiter;

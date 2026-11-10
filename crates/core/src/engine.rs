@@ -49,6 +49,9 @@ pub enum Command {
     },
     /// Save the current cursor position as the fixed target.
     SetTargetFromCursor,
+    /// Use this point as the fixed target (e.g. a target restored from the
+    /// configuration).
+    SetTarget(Point),
     UpdateSettings(ClickSettings),
     /// Stop, release any held button and end the engine thread.
     Shutdown,
@@ -173,6 +176,10 @@ impl<B: InputBackend, W: Waiter> Engine<B, W> {
                 }
                 Err(e) => self.notices.push(Notice::TargetQueryFailed(e)),
             },
+            Command::SetTarget(p) => {
+                self.target = Some(p);
+                self.state_changed = true;
+            }
             Command::UpdateSettings(settings) => {
                 self.settings = settings;
                 self.state_changed = true;

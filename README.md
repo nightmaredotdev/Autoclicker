@@ -1,31 +1,34 @@
 # Autoclicker
 A customizable desktop autoclicker with configurable click timing, human-like input variation, target positioning, and hotkeys. Built with cross-platform support in mind.
 
-> **Status:** early development. The click engine and Windows backend work as a headless console program. The graphical interface is not implemented yet.
+> **Status:** early development. A first GUI release for Windows: engine, global hotkeys and a Slint desktop interface.
 
 ## Platform support
 
 | Platform | Status |
 |---|---|
-| Windows 10/11 (x86_64) | Initial target. Verified on Windows 10 22H2 only; see [docs/m1-verification.md](docs/m1-verification.md). |
+| Windows 10/11 (x86_64) | Initial target. Verified on Windows 10 22H2 only; see [M1](docs/m1-verification.md) and [M2](docs/m2-verification.md) verification records. |
 | Linux | Not supported yet. The architecture keeps OS-specific code isolated so a backend can be added later. |
 
-## Usage (headless)
+## Usage
 
-```sh
-autoclicker.exe [--mode fixed|cursor] [--waiter high-resolution|plain]
-```
+Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error) with a Start/Stop button.
+
+- **Where to click:** *Fixed target* moves to a saved point before each click. Use **Pick target** (a 3-second countdown to move the cursor) or the set-target hotkey. *Current cursor* clicks wherever the cursor is, without moving it.
+- **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Changes apply when you press Enter or leave the field. Invalid values are explained and never applied.
+- **Hotkeys:** click a binding and press the new combination (Esc cancels). Function keys may be used alone; letters, digits and navigation keys need Ctrl or Alt. F12 is reserved by Windows.
+- **Always on top** and **About** are at the bottom of the window.
 
 | Default hotkey | Action |
 |---|---|
-| F6 | Toggle clicking |
-| F7 | Set the target to the current cursor position (fixed mode) |
+| F6 | Start / stop |
+| F7 | Set the target to the current cursor position |
 | Ctrl+Shift+F8 | Exit |
 | (unbound) | Start, Stop |
 
-Defaults: a 100 ms start-to-start interval with Gaussian jitter (σ = 10 ms, truncated at ±3σ), a 10 ms hold, and a 3 px position-jitter radius in fixed-target mode. Ctrl+C also exits cleanly.
+**Hotkeys are global.** While the program runs, Windows does not deliver the registered key combinations to the focused application (verified on Windows 10). A combination that another program already uses is shown as unavailable, and it cannot be recorded, because Windows does not pass that key press to this program.
 
-**Hotkeys are global.** While the program runs, Windows does not deliver the registered key combinations to the focused application; this was verified on Windows 10. If another program already uses a combination, it is reported at startup and that hotkey stays unavailable.
+Settings are saved to `%APPDATA%\Autoclicker\config.toml`. A file that cannot be read as valid settings is moved to `config.toml.bak`, and the window shows a warning.
 
 ### Limitations
 
@@ -51,7 +54,7 @@ cargo fmt --all --check        # formatting
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-Integration tests that use the real desktop are ignored by default. Run them from an interactive, unlocked Windows session. They never click outside their own test windows, but they briefly move the cursor and focus a test window.
+Integration tests that use the real desktop (including the GUI tests) are ignored by default. Run them from an interactive, unlocked Windows session. They never click outside their own test windows or touch your settings, but they briefly move the cursor and open and focus test windows.
 
 ```sh
 cargo test --workspace -- --ignored --test-threads=1
@@ -68,14 +71,14 @@ cargo run -p autoclicker-platform --features diagnostics --release --example mea
 ```
 crates/
   core/      OS-independent logic: configuration, scheduling, click engine (no unsafe code)
-  platform/  OS-specific input, hotkeys, timing and screen queries (the only crate with unsafe code)
-  app/       Desktop application (currently a headless console front end)
+  platform/  OS-specific input, hotkeys, timing and screen queries (the only crate with handwritten unsafe code)
+  app/       Desktop application: Slint UI (ui/app.slint), settings file, wiring
 docs/        Verification records
 ```
 
 ## Third-party licences
 
-The user interface is built with [Slint](https://slint.dev), used under the Slint Royalty-free Desktop, Mobile, and Web Applications License v2.0. The application will include the required attribution in its About screen.
+The user interface is built with [Slint](https://slint.dev), used under the Slint Royalty-free Desktop, Mobile, and Web Applications License v2.0. The required attribution (`AboutSlint`) is shown in the application's About window.
 
 ## License
 

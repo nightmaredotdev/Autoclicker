@@ -4,6 +4,11 @@ Results of the M1 (headless engine + Windows backend) verification, recorded
 on 2026-11-10. Anything not listed under "Verified" is an assumption or
 untested.
 
+> **Note (M2):** the headless console front end was replaced by the Slint GUI
+> in M2. Its console-control tests (`crates/app/tests/console_control.rs`)
+> were removed with it. The platform's console handler and its unit tests
+> remain. See [m2-verification.md](m2-verification.md).
+
 ## Test environment
 
 | | |

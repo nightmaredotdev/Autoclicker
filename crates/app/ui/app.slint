@@ -1,0 +1,455 @@
+// Autoclicker user interface.
+//
+// Logic lives in Rust (crates/app/src/gui.rs); this file only lays out the
+// window and forwards user actions through callbacks.
+
+import { Button, CheckBox, LineEdit, Palette, TabWidget, AboutSlint, VerticalBox } from "std-widgets.slint";
+
+export enum RunStatus { stopped, waiting, running, error }
+
+export struct HotkeyRow {
+    label: string,
+    binding: string,
+    problem: string,
+    bound: bool,
+}
+
+global Theme {
+    out property <color> running: #0f7b0f;
+    out property <color> waiting: #b26a00;
+    out property <color> error: #c42b1c;
+    out property <color> idle: Palette.foreground.transparentize(55%);
+    out property <color> muted: Palette.foreground.transparentize(35%);
+    out property <length> gap: 10px;
+    out property <length> card-padding: 14px;
+}
+
+component Card inherits Rectangle {
+    in property <string> title;
+    background: Palette.alternate-background;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Palette.border.transparentize(40%);
+    VerticalLayout {
+        padding: Theme.card-padding;
+        spacing: 8px;
+        if root.title != "": Text {
+            text: root.title;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.muted;
+        }
+        @children
+    }
+}
+
+component Message inherits Rectangle {
+    in property <string> text;
+    in property <color> tone: Theme.error;
+    in property <bool> dismissable: false;
+    callback dismissed;
+    background: root.tone.transparentize(88%);
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.tone.transparentize(60%);
+    layout := HorizontalLayout {
+        padding: 8px;
+        spacing: 8px;
+        Text {
+            text: root.text;
+            wrap: word-wrap;
+            color: Palette.foreground;
+            font-size: 12px;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+        }
+        if root.dismissable: Button {
+            text: "Dismiss";
+            clicked => { root.dismissed(); }
+        }
+    }
+}
+
+component FieldRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> unit;
+    in property <string> hint;
+    in-out property <string> value;
+    callback edited();
+    callback commit();
+    spacing: 8px;
+    Text {
+        text: root.label;
+        vertical-alignment: center;
+        min-width: 120px;
+        horizontal-stretch: 0;
+    }
+    edit := LineEdit {
+        text <=> root.value;
+        input-type: decimal;
+        horizontal-alignment: right;
+        width: 88px;
+        edited => { root.edited(); }
+        accepted => { root.commit(); }
+        changed has-focus => {
+            if !self.has-focus { root.commit(); }
+        }
+    }
+    Text {
+        text: root.unit;
+        vertical-alignment: center;
+        color: Theme.muted;
+        min-width: 22px;
+    }
+    Text {
+        text: root.hint;
+        vertical-alignment: center;
+        color: Theme.muted;
+        font-size: 11px;
+        horizontal-stretch: 1;
+        overflow: elide;
+    }
+}
+
+export component AboutWindow inherits Window {
+    in property <string> version;
+    callback close-clicked();
+    title: "About Autoclicker";
+    min-width: 380px;
+    preferred-width: 380px;
+    VerticalBox {
+        padding: 20px;
+        spacing: 10px;
+        alignment: start;
+        Text {
+            text: "Autoclicker";
+            font-size: 22px;
+            font-weight: 700;
+        }
+        Text {
+            text: "Version " + root.version;
+            color: Theme.muted;
+        }
+        Text {
+            text: "A desktop autoclicker with precise, configurable click timing, human-like variation, fixed-target or cursor clicking, and global hotkeys.";
+            wrap: word-wrap;
+        }
+        Text {
+            text: "Licensed under the MIT License.";
+            color: Theme.muted;
+            font-size: 12px;
+        }
+        AboutSlint {
+            min-height: 150px;
+            max-height: 190px;
+        }
+        HorizontalLayout {
+            alignment: end;
+            Button {
+                text: "Close";
+                primary: true;
+                clicked => { root.close-clicked(); }
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    // ---- state from Rust ----
+    in property <string> window-title: "Autoclicker";
+    in property <RunStatus> status: RunStatus.stopped;
+    in property <string> status-headline: "Stopped";
+    in property <string> status-detail;
+    in property <string> error-text;
+    in property <string> notice-text;
+    in property <string> config-warning;
+    in property <string> toggle-hint;
+    in-out property <bool> fixed-mode: true;
+    in property <string> target-text: "Not set";
+    in property <int> pick-countdown;
+    in-out property <string> interval-text;
+    in-out property <string> jitter-text;
+    in-out property <string> hold-text;
+    in-out property <string> radius-text;
+    in property <string> rate-hint;
+    in property <string> settings-error;
+    in property <bool> settings-pending;
+    in property <[HotkeyRow]> hotkeys;
+    in-out property <int> capturing-index: -1;
+    in property <string> hotkeys-error;
+    in-out property <bool> keep-on-top;
+
+    // ---- user actions ----
+    callback start-stop-clicked();
+    callback mode-selected(bool);
+    callback pick-target-clicked();
+    callback settings-edited();
+    callback settings-commit();
+    callback hotkey-record(int);
+    callback hotkey-key(string, bool, bool, bool);
+    callback hotkey-cancel();
+    callback hotkey-clear(int);
+    callback keep-on-top-toggled(bool);
+    callback about-clicked();
+    callback warning-dismissed();
+    // ---- wake-ups from worker threads (invoked via the event loop) ----
+    callback status-ready();
+    callback exit-requested();
+
+    public function start-recording(index: int) {
+        root.capturing-index = index;
+        key-capture.focus();
+        root.hotkey-record(index);
+    }
+
+    title: root.window-title;
+    always-on-top: root.keep-on-top;
+    min-width: 400px;
+    preferred-width: 420px;
+    background: Palette.background;
+
+    // Captures the next key while a hotkey is being recorded.
+    key-capture := FocusScope {
+        x: 0; y: 0; width: 0; height: 0;
+        enabled: root.capturing-index >= 0;
+        key-pressed(event) => {
+            if root.capturing-index < 0 { return reject; }
+            if event.repeat { return accept; }
+            root.hotkey-key(event.text, event.modifiers.control, event.modifiers.alt, event.modifiers.shift);
+            accept
+        }
+        changed has-focus => {
+            if !self.has-focus && root.capturing-index >= 0 {
+                root.hotkey-cancel();
+            }
+        }
+    }
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: Theme.gap;
+
+        if root.config-warning != "": Message {
+            text: root.config-warning;
+            tone: Theme.waiting;
+            dismissable: true;
+            dismissed => { root.warning-dismissed(); }
+        }
+
+        // ---- status and main action ----
+        Card {
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: stretch;
+                Rectangle {
+                    width: 14px;
+                    height: 14px;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: 7px;
+                    background: root.status == RunStatus.running ? Theme.running
+                        : root.status == RunStatus.waiting ? Theme.waiting
+                        : root.status == RunStatus.error ? Theme.error : Theme.idle;
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: root.status-headline;
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: root.status == RunStatus.error ? Theme.error : Palette.foreground;
+                    }
+                    Text {
+                        text: root.status-detail;
+                        color: Theme.muted;
+                        font-size: 12px;
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Button {
+                        text: root.status == RunStatus.running || root.status == RunStatus.waiting ? "Stop" : "Start";
+                        primary: true;
+                        min-width: 104px;
+                        clicked => { root.start-stop-clicked(); }
+                    }
+                    Text {
+                        text: root.toggle-hint;
+                        color: Theme.muted;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+            if root.error-text != "": Message { text: root.error-text; }
+            // Transient notices; the line always keeps its height so the
+            // window does not jump when a notice appears.
+            Text {
+                text: root.notice-text;
+                color: Theme.muted;
+                font-size: 12px;
+                min-height: 16px;
+                overflow: elide;
+            }
+        }
+
+        TabWidget {
+            vertical-stretch: 1;
+            Tab {
+                title: "Clicking";
+                VerticalLayout {
+                    padding-top: 10px;
+                    spacing: Theme.gap;
+                    alignment: start;
+                    Card {
+                        title: "WHERE TO CLICK";
+                        HorizontalLayout {
+                            spacing: 6px;
+                            Button {
+                                text: "Fixed target";
+                                primary: root.fixed-mode;
+                                horizontal-stretch: 1;
+                                clicked => { root.mode-selected(true); }
+                            }
+                            Button {
+                                text: "Current cursor";
+                                primary: !root.fixed-mode;
+                                horizontal-stretch: 1;
+                                clicked => { root.mode-selected(false); }
+                            }
+                        }
+                        if root.fixed-mode: HorizontalLayout {
+                            spacing: 8px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                Text {
+                                    text: root.pick-countdown > 0
+                                        ? "Move the cursor to the target… " + root.pick-countdown
+                                        : "Target: " + root.target-text;
+                                    font-weight: root.pick-countdown > 0 ? 600 : 400;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            Button {
+                                text: root.pick-countdown > 0 ? "Cancel" : "Pick target";
+                                clicked => { root.pick-target-clicked(); }
+                            }
+                        }
+                        if !root.fixed-mode: Text {
+                            text: "Clicks wherever the cursor is. The cursor is never moved.";
+                            color: Theme.muted;
+                            wrap: word-wrap;
+                        }
+                    }
+                    Card {
+                        title: "TIMING";
+                        FieldRow {
+                            label: "Interval";
+                            unit: "ms";
+                            hint: root.rate-hint;
+                            value <=> root.interval-text;
+                            edited => { root.settings-edited(); }
+                            commit => { root.settings-commit(); }
+                        }
+                        FieldRow {
+                            label: "Interval jitter (σ)";
+                            unit: "ms";
+                            value <=> root.jitter-text;
+                            edited => { root.settings-edited(); }
+                            commit => { root.settings-commit(); }
+                        }
+                        FieldRow {
+                            label: "Hold";
+                            unit: "ms";
+                            value <=> root.hold-text;
+                            edited => { root.settings-edited(); }
+                            commit => { root.settings-commit(); }
+                        }
+                        FieldRow {
+                            label: "Position jitter";
+                            unit: "px";
+                            hint: root.fixed-mode ? "radius" : "fixed target only";
+                            value <=> root.radius-text;
+                            edited => { root.settings-edited(); }
+                            commit => { root.settings-commit(); }
+                        }
+                        if root.settings-error != "": Message { text: root.settings-error; }
+                        if root.settings-pending && root.settings-error == "": Text {
+                            text: "Press Enter or leave the field to apply.";
+                            color: Theme.muted;
+                            font-size: 11px;
+                        }
+                    }
+                }
+            }
+            Tab {
+                title: "Hotkeys";
+                VerticalLayout {
+                    padding-top: 10px;
+                    spacing: Theme.gap;
+                    alignment: start;
+                    Card {
+                        title: "GLOBAL HOTKEYS";
+                        for row[index] in root.hotkeys: HorizontalLayout {
+                            spacing: 8px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                Text { text: row.label; }
+                                if row.problem != "": Text {
+                                    text: row.problem;
+                                    color: Theme.error;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            Button {
+                                text: root.capturing-index == index ? "Press keys…" : row.binding;
+                                primary: root.capturing-index == index;
+                                min-width: 132px;
+                                clicked => {
+                                    if root.capturing-index == index {
+                                        root.hotkey-cancel();
+                                    } else {
+                                        root.start-recording(index);
+                                    }
+                                }
+                            }
+                            Button {
+                                text: "Clear";
+                                enabled: row.bound && root.capturing-index < 0;
+                                clicked => { root.hotkey-clear(index); }
+                            }
+                        }
+                        if root.hotkeys-error != "": Message { text: root.hotkeys-error; }
+                        Text {
+                            text: root.capturing-index >= 0
+                                ? "Press the new key combination, or Esc to cancel. If nothing happens, another program already uses that combination."
+                                : "Hotkeys work while other programs are focused. Those programs do not receive the keys.";
+                            color: Theme.muted;
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            CheckBox {
+                text: "Always on top";
+                checked <=> root.keep-on-top;
+                toggled => { root.keep-on-top-toggled(self.checked); }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            Button {
+                text: "About";
+                clicked => { root.about-clicked(); }
+            }
+        }
+    }
+}

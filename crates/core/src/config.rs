@@ -4,6 +4,7 @@
 //! [`ValidatedConfig`]; invalid values are rejected with descriptive errors and
 //! never silently clamped.
 
+use crate::geometry::Point;
 use crate::keys::{Hotkey, HotkeyRuleError, Key, Modifiers};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -49,6 +50,8 @@ pub struct Config {
     pub version: u32,
     pub click: ClickConfig,
     pub hotkeys: HotkeyConfig,
+    #[serde(default)]
+    pub window: WindowConfig,
 }
 
 /// Click timing and positioning.
@@ -64,6 +67,17 @@ pub struct ClickConfig {
     pub hold_ms: u32,
     /// Maximum distance of a click from the fixed target (0 disables it).
     pub position_jitter_radius_px: u32,
+    /// The saved fixed target, if any. Whether it is still on a connected
+    /// monitor is checked by the platform layer, not here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<Point>,
+}
+
+/// Window preferences of the desktop application.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WindowConfig {
+    pub always_on_top: bool,
 }
 
 /// Global hotkey bindings. `None` means unbound.
@@ -83,6 +97,7 @@ impl Default for Config {
             version: SCHEMA_VERSION,
             click: ClickConfig::default(),
             hotkeys: HotkeyConfig::default(),
+            window: WindowConfig::default(),
         }
     }
 }
@@ -95,6 +110,7 @@ impl Default for ClickConfig {
             interval_jitter_sigma_ms: 10.0,
             hold_ms: 10,
             position_jitter_radius_px: 3,
+            target: None,
         }
     }
 }
@@ -159,6 +175,17 @@ impl HotkeyConfig {
             HotkeyAction::SetTarget => self.set_target,
             HotkeyAction::Exit => self.exit,
         }
+    }
+
+    pub fn set(&mut self, action: HotkeyAction, hotkey: Option<Hotkey>) {
+        let slot = match action {
+            HotkeyAction::Toggle => &mut self.toggle,
+            HotkeyAction::Start => &mut self.start,
+            HotkeyAction::Stop => &mut self.stop,
+            HotkeyAction::SetTarget => &mut self.set_target,
+            HotkeyAction::Exit => &mut self.exit,
+        };
+        *slot = hotkey;
     }
 }
 
@@ -225,7 +252,7 @@ pub struct ValidatedConfig {
 pub enum ConfigError {
     #[error("unsupported configuration version {found} (this build supports version {supported})")]
     UnsupportedVersion { found: u32, supported: u32 },
-    #[error("interval of {value} ms is outside the allowed range {min}..={max} ms")]
+    #[error("interval of {value} ms is outside the allowed range of {min} to {max} ms")]
     IntervalOutOfRange { value: u32, min: u32, max: u32 },
     #[error("interval jitter must be a finite number of milliseconds >= 0 (got {0})")]
     InvalidJitter(f64),
@@ -531,6 +558,34 @@ mod tests {
         let bad_key = text.replace("\"F6\"", "\"Ctrl+Nope\"");
         let err = toml::from_str::<Config>(&bad_key).unwrap_err().to_string();
         assert!(err.contains("unknown key"), "{err}");
+    }
+
+    #[test]
+    fn target_and_window_settings_round_trip_and_are_optional() {
+        let mut cfg = Config::default();
+        cfg.click.target = Some(Point::new(-1200, 340));
+        cfg.window.always_on_top = true;
+        let text = toml::to_string(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back, cfg);
+
+        // Files without the optional parts still load.
+        let plain = toml::to_string(&Config::default()).unwrap();
+        assert!(!plain.contains("[click.target]"), "{plain}");
+        let stripped: String = plain.split("[window]").next().unwrap().to_string();
+        let back: Config = toml::from_str(&stripped).unwrap();
+        assert_eq!(back, Config::default());
+    }
+
+    #[test]
+    fn hotkey_set_and_get_are_symmetric() {
+        let mut h = HotkeyConfig::default();
+        for action in HotkeyAction::ALL {
+            h.set(action, Some(Hotkey::plain(Key::F20)));
+            assert_eq!(h.get(action), Some(Hotkey::plain(Key::F20)));
+            h.set(action, None);
+            assert_eq!(h.get(action), None);
+        }
     }
 
     #[test]

@@ -32,6 +32,8 @@ slint = { version = "=1.18.1", default-features = false, features = [
     "system-tray",
 ] }
 
+slint-build = "=1.18.1"
+
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",

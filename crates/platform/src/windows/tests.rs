@@ -372,6 +372,7 @@ fn engine_settings(f: impl FnOnce(&mut ClickConfig)) -> autoclicker_core::config
         interval_jitter_sigma_ms: 0.0,
         hold_ms: 20,
         position_jitter_radius_px: 0,
+        target: None,
     };
     f(&mut c);
     c.validated().unwrap()

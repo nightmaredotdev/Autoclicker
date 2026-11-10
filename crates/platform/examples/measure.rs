@@ -176,6 +176,7 @@ mod imp {
             interval_jitter_sigma_ms: 0.0,
             hold_ms: args.hold_ms,
             position_jitter_radius_px: 0,
+            target: None,
         }
         .validated()
         .expect("valid settings");
