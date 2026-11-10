@@ -13,5 +13,9 @@ fastrand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+# Serialization format used by the app; tests check the config round-trips through it.
+toml.workspace = true
+
 [lints]
 workspace = true

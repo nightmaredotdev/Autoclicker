@@ -7,3 +7,6 @@
 #[cfg(windows)]
 #[allow(unsafe_code)] // Win32 FFI is only permitted inside this module.
 mod windows;
+
+#[cfg(windows)]
+pub use windows::*;

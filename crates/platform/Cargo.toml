@@ -8,12 +8,21 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+# Test and measurement helpers (mouse hook recorder, test windows, key
+# injection). Used by tests and examples only; the application never enables it.
+diagnostics = []
+
 [dependencies]
 autoclicker-core.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
+
+[[example]]
+name = "measure"
+required-features = ["diagnostics"]
 
 [lints]
 workspace = true
