@@ -13,7 +13,8 @@
       directory with its own single-instance name and log directory, checks
       that it uses %APPDATA%\Autoclicker for settings and writes nothing next
       to itself, then ends it through the session-end path and requires exit
-      code 0. It reads, but does not change, your settings file.
+      code 0. It reads, but does not change, your settings file (except the
+      one-time removal of obsolete Start/Stop hotkeys from a pre-1.0 file).
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\verify-package.ps1 -Reproducible -Launch

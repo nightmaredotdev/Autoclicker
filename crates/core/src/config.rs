@@ -6,6 +6,7 @@
 
 use crate::geometry::Point;
 use crate::keys::{Hotkey, HotkeyRuleError, Key, Modifiers};
+use serde::de::IgnoredAny;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
@@ -85,10 +86,15 @@ pub struct WindowConfig {
 #[serde(deny_unknown_fields)]
 pub struct HotkeyConfig {
     pub toggle: Option<Hotkey>,
-    pub start: Option<Hotkey>,
-    pub stop: Option<Hotkey>,
     pub set_target: Option<Hotkey>,
     pub exit: Option<Hotkey>,
+    /// Separate start/stop bindings of pre-1.0 builds. Accepted when loading
+    /// older files (their values are not even parsed, so a malformed old entry
+    /// cannot break loading), never used, and dropped on the next save.
+    #[serde(default, rename = "start", skip_serializing)]
+    obsolete_start: Option<IgnoredAny>,
+    #[serde(default, rename = "stop", skip_serializing)]
+    obsolete_stop: Option<IgnoredAny>,
 }
 
 impl Default for Config {
@@ -119,8 +125,6 @@ impl Default for HotkeyConfig {
     fn default() -> Self {
         Self {
             toggle: Some(Hotkey::plain(Key::F6)),
-            start: None,
-            stop: None,
             set_target: Some(Hotkey::plain(Key::F7)),
             exit: Some(Hotkey::new(
                 Modifiers {
@@ -130,6 +134,8 @@ impl Default for HotkeyConfig {
                 },
                 Key::F8,
             )),
+            obsolete_start: None,
+            obsolete_stop: None,
         }
     }
 }
@@ -138,17 +144,13 @@ impl Default for HotkeyConfig {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum HotkeyAction {
     Toggle,
-    Start,
-    Stop,
     SetTarget,
     Exit,
 }
 
 impl HotkeyAction {
-    pub const ALL: [HotkeyAction; 5] = [
+    pub const ALL: [HotkeyAction; 3] = [
         HotkeyAction::Toggle,
-        HotkeyAction::Start,
-        HotkeyAction::Stop,
         HotkeyAction::SetTarget,
         HotkeyAction::Exit,
     ];
@@ -158,8 +160,6 @@ impl fmt::Display for HotkeyAction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             HotkeyAction::Toggle => "toggle",
-            HotkeyAction::Start => "start",
-            HotkeyAction::Stop => "stop",
             HotkeyAction::SetTarget => "set target",
             HotkeyAction::Exit => "exit",
         })
@@ -167,11 +167,20 @@ impl fmt::Display for HotkeyAction {
 }
 
 impl HotkeyConfig {
+    /// No bindings at all.
+    pub fn none() -> Self {
+        Self {
+            toggle: None,
+            set_target: None,
+            exit: None,
+            obsolete_start: None,
+            obsolete_stop: None,
+        }
+    }
+
     pub fn get(&self, action: HotkeyAction) -> Option<Hotkey> {
         match action {
             HotkeyAction::Toggle => self.toggle,
-            HotkeyAction::Start => self.start,
-            HotkeyAction::Stop => self.stop,
             HotkeyAction::SetTarget => self.set_target,
             HotkeyAction::Exit => self.exit,
         }
@@ -180,12 +189,22 @@ impl HotkeyConfig {
     pub fn set(&mut self, action: HotkeyAction, hotkey: Option<Hotkey>) {
         let slot = match action {
             HotkeyAction::Toggle => &mut self.toggle,
-            HotkeyAction::Start => &mut self.start,
-            HotkeyAction::Stop => &mut self.stop,
             HotkeyAction::SetTarget => &mut self.set_target,
             HotkeyAction::Exit => &mut self.exit,
         };
         *slot = hotkey;
+    }
+
+    /// Whether the loaded file contained the obsolete separate start/stop
+    /// bindings (ignored; the start/stop toggle replaces them).
+    pub fn had_obsolete_bindings(&self) -> bool {
+        self.obsolete_start.is_some() || self.obsolete_stop.is_some()
+    }
+
+    /// Forgets the obsolete bindings (they are never saved anyway).
+    pub fn clear_obsolete_bindings(&mut self) {
+        self.obsolete_start = None;
+        self.obsolete_stop = None;
     }
 }
 
@@ -424,8 +443,11 @@ mod tests {
         assert_eq!(hk(HotkeyAction::Toggle).as_deref(), Some("F6"));
         assert_eq!(hk(HotkeyAction::SetTarget).as_deref(), Some("F7"));
         assert_eq!(hk(HotkeyAction::Exit).as_deref(), Some("Ctrl+Shift+F8"));
-        assert_eq!(hk(HotkeyAction::Start), None);
-        assert_eq!(hk(HotkeyAction::Stop), None);
+        assert_eq!(
+            HotkeyAction::ALL.len(),
+            3,
+            "only toggle, set target and exit"
+        );
     }
 
     #[test]
@@ -506,7 +528,7 @@ mod tests {
         cfg.click.interval_ms = 5;
         cfg.click.position_jitter_radius_px = 99;
         cfg.hotkeys.exit = Some(Hotkey::plain(Key::F12));
-        cfg.hotkeys.start = Some(Hotkey::plain(Key::F6));
+        cfg.hotkeys.set_target = Some(Hotkey::plain(Key::F6));
         let errs = cfg.validate().unwrap_err().0;
         assert_eq!(errs.len(), 5, "{errs:?}");
         assert!(errs.contains(&ConfigError::UnsupportedVersion {
@@ -516,7 +538,7 @@ mod tests {
         assert!(errs.contains(&ConfigError::DuplicateHotkey {
             hotkey: Hotkey::plain(Key::F6),
             first: HotkeyAction::Toggle,
-            second: HotkeyAction::Start,
+            second: HotkeyAction::SetTarget,
         }));
         assert!(errs.iter().any(|e| matches!(
             e,
@@ -528,20 +550,71 @@ mod tests {
     }
 
     #[test]
-    fn same_key_for_start_and_stop_is_rejected() {
-        // This combination made the reference GUI impossible to stop.
+    fn same_key_for_two_actions_is_rejected() {
         let mut cfg = Config::default();
-        cfg.hotkeys.start = Some(Hotkey::plain(Key::F9));
-        cfg.hotkeys.stop = Some(Hotkey::plain(Key::F9));
+        cfg.hotkeys.exit = Some(Hotkey::plain(Key::F7));
         let errs = cfg.validate().unwrap_err().0;
         assert!(matches!(
             errs[0],
             ConfigError::DuplicateHotkey {
-                first: HotkeyAction::Start,
-                second: HotkeyAction::Stop,
+                first: HotkeyAction::SetTarget,
+                second: HotkeyAction::Exit,
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn files_with_obsolete_start_stop_bindings_still_load() {
+        // Written by pre-1.0 builds, including a value that would not even parse.
+        let old = r#"
+version = 1
+
+[click]
+mode = "cursor"
+interval_ms = 250
+interval_jitter_sigma_ms = 5.0
+hold_ms = 20
+position_jitter_radius_px = 0
+
+[hotkeys]
+toggle = "F9"
+start = "Ctrl+Alt+S"
+stop = "Ctrl+Nonsense"
+set_target = "F10"
+exit = "Ctrl+Shift+F11"
+"#;
+        let cfg: Config = toml::from_str(old).expect("older file loads");
+        assert!(cfg.hotkeys.had_obsolete_bindings());
+        let v = cfg.validate().expect("still valid");
+        assert_eq!(
+            v.hotkeys.get(HotkeyAction::Toggle),
+            Some(Hotkey::plain(Key::F9))
+        );
+        assert_eq!(
+            v.hotkeys.get(HotkeyAction::SetTarget),
+            Some(Hotkey::plain(Key::F10))
+        );
+        assert_eq!(
+            v.hotkeys.iter().count(),
+            3,
+            "obsolete bindings are not registered"
+        );
+        assert_eq!(cfg.click.interval_ms, 250, "other settings are kept");
+
+        // They are never written back.
+        let saved = toml::to_string(&cfg).unwrap();
+        assert!(
+            !saved.contains("start") && !saved.contains("stop ="),
+            "{saved}"
+        );
+        let reloaded: Config = toml::from_str(&saved).unwrap();
+        assert!(!reloaded.hotkeys.had_obsolete_bindings());
+
+        // A file without them is unaffected.
+        let current: Config =
+            toml::from_str(&toml::to_string(&Config::default()).unwrap()).unwrap();
+        assert!(!current.hotkeys.had_obsolete_bindings());
     }
 
     #[test]

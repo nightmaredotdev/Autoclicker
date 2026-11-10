@@ -15,7 +15,7 @@ Getting started
    wherever the cursor is), adjust the timing, and press Start.
 
 Default hotkeys (global, they work while other programs are focused):
-  F6              Start / stop clicking
+  F6              Toggle start/stop clicking
   F7              Set the target to the current cursor position
   Ctrl+Shift+F8   Exit
 

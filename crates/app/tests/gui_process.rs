@@ -43,12 +43,12 @@ impl Sandbox {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut cfg = Config {
-            hotkeys: HotkeyConfig {
-                toggle: Some(Hotkey::plain(Key::F13)),
-                start: None,
-                stop: None,
-                set_target: Some(Hotkey::plain(Key::F15)),
-                exit: Some(Hotkey::plain(Key::F14)),
+            hotkeys: {
+                let mut h = HotkeyConfig::none();
+                h.toggle = Some(Hotkey::plain(Key::F13));
+                h.set_target = Some(Hotkey::plain(Key::F15));
+                h.exit = Some(Hotkey::plain(Key::F14));
+                h
             },
             ..Config::default()
         };
@@ -376,12 +376,10 @@ fn the_log_records_startup_problems_and_shutdown() {
     let sb = Sandbox::new("log", false);
     // Another "program" holds F15, the set-target binding.
     let taken = Config {
-        hotkeys: HotkeyConfig {
-            toggle: Some(Hotkey::plain(Key::F15)),
-            start: None,
-            stop: None,
-            set_target: None,
-            exit: None,
+        hotkeys: {
+            let mut h = HotkeyConfig::none();
+            h.toggle = Some(Hotkey::plain(Key::F15));
+            h
         },
         ..Config::default()
     };

@@ -22,11 +22,11 @@ To update, close Autoclicker (tray icon > Exit) and replace the folder with the 
 
 ## Usage
 
-Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error) with a Start/Stop button.
+Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error), the measured click rate while running, and a Start/Stop button.
 
 - **Where to click:** *Fixed target* moves to a saved point before each click. Use **Pick target** (a 3-second countdown to move the cursor) or the set-target hotkey. *Current cursor* clicks wherever the cursor is, without moving it.
-- **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Changes apply when you press Enter or leave the field. Invalid values are explained and never applied.
-- **Hotkeys:** click a binding and press the new combination (Esc cancels). Function keys may be used alone; letters, digits and navigation keys need Ctrl or Alt. F12 is reserved by Windows.
+- **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Each setting has a short description under its name. Changes apply when you press Enter, click anywhere outside the field, switch tabs or use a button. Invalid values are explained and never applied; the previous value stays active.
+- **Hotkeys:** three global hotkeys (toggle start/stop, set target, exit). Click a binding and press the new combination (Esc cancels). Function keys may be used alone; letters, digits and navigation keys need Ctrl or Alt. F12 is reserved by Windows.
 - **Always on top**, **Logs** (opens the log folder), **About** and **Exit** are at the bottom of the window.
 - **Closing the window hides it** to the notification area; clicking and hotkeys keep working. The tray icon (green dot while clicking) can show/hide the window, start/stop clicking, open the logs and exit. On Windows 10 the icon may start in the overflow area (^ next to the clock); drag it to the taskbar to keep it visible.
 - **One instance:** starting Autoclicker again brings the running window to the front.
@@ -44,10 +44,9 @@ Default settings:
 
 | Default hotkey | Action |
 |---|---|
-| F6 | Start / stop |
+| F6 | Toggle start/stop |
 | F7 | Set the target to the current cursor position |
 | Ctrl+Shift+F8 | Exit |
-| (unbound) | Start, Stop |
 
 **Hotkeys are global.** While the program runs, Windows does not deliver the registered key combinations to the focused application (verified on Windows 10). A combination that another program already uses is shown as unavailable, and it cannot be recorded, because Windows does not pass that key press to this program.
 

@@ -193,9 +193,7 @@ pub fn binding_text(hotkey: Option<Hotkey>) -> String {
 
 pub fn action_label(action: HotkeyAction) -> &'static str {
     match action {
-        HotkeyAction::Toggle => "Start / stop",
-        HotkeyAction::Start => "Start",
-        HotkeyAction::Stop => "Stop",
+        HotkeyAction::Toggle => "Toggle start/stop",
         HotkeyAction::SetTarget => "Set target",
         HotkeyAction::Exit => "Exit",
     }
@@ -230,19 +228,11 @@ pub fn status_view(s: &Snapshot) -> StatusView {
         RunState::Running => (Status::Running, "Running"),
         RunState::Faulted => (Status::Error, "Error"),
     };
-    let clicks = |n: u64| {
-        if n == 1 {
-            "1 click".to_string()
-        } else {
-            format!("{n} clicks")
-        }
-    };
-    let detail = match status {
-        Status::Running | Status::Waiting => match s.run_cps {
-            Some(cps) => format!("{} · {cps:.1} clicks/s", clicks(s.run_clicks)),
-            None => clicks(s.run_clicks),
-        },
-        Status::Stopped | Status::Error => format!("{} in total", clicks(s.total_clicks)),
+    // Only the measured rate while clicking; click counts are kept internally
+    // (engine, log) but not shown.
+    let detail = match (status, s.run_cps) {
+        (Status::Running, Some(cps)) => format!("{cps:.1} clicks/s"),
+        _ => String::new(),
     };
     let error = s
         .fault
@@ -396,7 +386,7 @@ mod tests {
         let v = status_view(&s);
         assert_eq!(v.status, Status::Stopped);
         assert_eq!(v.window_title, "Autoclicker");
-        assert_eq!(v.detail, "0 clicks in total");
+        assert_eq!(v.detail, "", "no click counter when stopped");
         assert_eq!(v.target, "Not set");
 
         s.state = RunState::Running;
@@ -405,11 +395,16 @@ mod tests {
         let v = status_view(&s);
         assert_eq!(v.status, Status::Running);
         assert_eq!(v.window_title, "Autoclicker - Running");
-        assert_eq!(v.detail, "1 click");
+        assert_eq!(v.detail, "", "no rate until two presses were measured");
         assert_eq!(v.target, "-5, 10");
         s.run_clicks = 12;
+        s.total_clicks = 345;
         s.run_cps = Some(9.96);
-        assert_eq!(status_view(&s).detail, "12 clicks · 10.0 clicks/s");
+        assert_eq!(
+            status_view(&s).detail,
+            "10.0 clicks/s",
+            "rate only, no counts"
+        );
 
         s.state = RunState::Faulted;
         s.fault = Some(Fault::PressFailed(InputError::new("SendInput", "blocked")));
@@ -417,5 +412,6 @@ mod tests {
         assert_eq!(v.status, Status::Error);
         assert_eq!(v.window_title, "Autoclicker - Error");
         assert!(v.error.starts_with("Could not press"), "{}", v.error);
+        assert_eq!(v.detail, "");
     }
 }

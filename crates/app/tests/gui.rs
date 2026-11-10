@@ -32,8 +32,9 @@ mod imp {
     use autoclicker_core::geometry::{Point, Rect};
     use autoclicker_core::keys::{Hotkey, Key, Modifiers};
     use autoclicker_platform::diagnostics::{
-        HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, cursor_position,
-        force_foreground, foreground_window, monitors, post_close, send_keys, windows_of_process,
+        HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, click_unmarked,
+        client_rect, cursor_position, force_foreground, foreground_window, monitors, post_close,
+        send_keys, window_at, windows_of_process,
     };
     use autoclicker_platform::{HotkeyService, WindowsInput};
     use slint::{Model, Timer, TimerMode};
@@ -44,6 +45,12 @@ mod imp {
     const VK_SHIFT: u16 = 0x10;
     const VK_ESCAPE: u16 = 0x1B;
     const VK_A: u16 = 0x41;
+    const VK_RETURN: u16 = 0x0D;
+    const VK_0: u16 = 0x30;
+    const VK_1: u16 = 0x31;
+    const VK_5: u16 = 0x35;
+    const VK_6: u16 = 0x36;
+    const VK_7: u16 = 0x37;
     const VK_K: u16 = 0x4B;
     const VK_F13: u16 = 0x7C;
     const VK_F16: u16 = 0x7F;
@@ -163,12 +170,12 @@ mod imp {
     /// autoclicker that uses the defaults.
     fn initial_config() -> Config {
         Config {
-            hotkeys: HotkeyConfig {
-                toggle: Some(Hotkey::plain(Key::F13)),
-                start: None,
-                stop: None,
-                set_target: Some(Hotkey::plain(Key::F15)),
-                exit: Some(Hotkey::plain(Key::F14)),
+            hotkeys: {
+                let mut h = HotkeyConfig::none();
+                h.toggle = Some(Hotkey::plain(Key::F13));
+                h.set_target = Some(Hotkey::plain(Key::F15));
+                h.exit = Some(Hotkey::plain(Key::F14));
+                h
             },
             ..Config::default()
         }
@@ -178,12 +185,10 @@ mod imp {
     /// program that already uses the combination.
     fn hold_hotkey(key: Key) -> HotkeyService {
         let taken = Config {
-            hotkeys: HotkeyConfig {
-                toggle: Some(Hotkey::plain(key)),
-                start: None,
-                stop: None,
-                set_target: None,
-                exit: None,
+            hotkeys: {
+                let mut h = HotkeyConfig::none();
+                h.toggle = Some(Hotkey::plain(key));
+                h
             },
             ..Config::default()
         };
@@ -210,6 +215,7 @@ mod imp {
         first_session(&path, &recorder);
         second_session(&path);
         startup_conflict_is_shown(&dir);
+        obsolete_start_stop_bindings_are_migrated(&dir);
         corrupt_settings_are_reported(&dir);
 
         force_foreground(previous_foreground);
@@ -257,6 +263,13 @@ mod imp {
             ui.get_status() == RunStatus::Running
         });
         assert_eq!(main_window("Autoclicker").title, "Autoclicker - Running");
+        pump_until("rate shown", Duration::from_secs(2), || {
+            ui.get_status_detail().ends_with(" clicks/s")
+        });
+        assert!(
+            !ui.get_status_detail().contains("click "),
+            "rate only, no counter"
+        );
         ui.invoke_start_stop_clicked();
         pump_until("stopped state", Duration::from_secs(2), || {
             ui.get_status() == RunStatus::Stopped
@@ -268,7 +281,7 @@ mod imp {
             events.iter().all(|e| e.point == at),
             "cursor mode must not move the cursor"
         );
-        assert!(ui.get_status_detail().contains("clicks in total"));
+        assert_eq!(ui.get_status_detail(), "", "no click counter is shown");
         assert_eq!(main_window("Autoclicker").title, "Autoclicker");
         recorder.clear();
 
@@ -371,6 +384,94 @@ mod imp {
         assert_eq!(app.config().click.interval_ms, 150);
         assert_eq!(saved(path).click.interval_ms, 150);
 
+        step("clicking empty space outside an edited field commits it");
+        let gui = main_window("Autoclicker").id;
+        let client = client_rect(gui).expect("client area");
+        // Inside the window's left padding, outside every card and control.
+        let empty = Point::new(client.left + 5, (client.top + client.bottom) / 2);
+        let type_interval = |digits: &[u16]| {
+            focus(gui);
+            ui.invoke_focus_interval_field();
+            pump(Duration::from_millis(100));
+            let mut keys = vec![
+                (VK_CONTROL, false),
+                (VK_A, false),
+                (VK_A, true),
+                (VK_CONTROL, true),
+            ];
+            for &d in digits {
+                keys.extend([(d, false), (d, true)]);
+            }
+            press(gui, &keys);
+        };
+        type_interval(&[VK_1, VK_7, VK_5]);
+        pump_until("typed", Duration::from_secs(2), || {
+            ui.get_interval_text() == "175"
+        });
+        assert!(ui.get_settings_pending());
+        assert_eq!(
+            app.config().click.interval_ms,
+            150,
+            "not applied while editing"
+        );
+        assert_eq!(window_at(empty), gui, "refusing to click: not our window");
+        assert_eq!(click_unmarked(empty), 2);
+        pump_until(
+            "committed by the outside click",
+            Duration::from_secs(2),
+            || app.config().click.interval_ms == 175,
+        );
+        assert_eq!(saved(path).click.interval_ms, 175);
+        assert_eq!(ui.get_settings_error(), "");
+        assert!(!ui.get_settings_pending());
+
+        step("an invalid value is rejected on an outside click; the previous value stays");
+        type_interval(&[VK_5]);
+        pump_until("typed", Duration::from_secs(2), || {
+            ui.get_interval_text() == "5"
+        });
+        assert_eq!(window_at(empty), gui);
+        click_unmarked(empty);
+        pump_until("rejected", Duration::from_secs(2), || {
+            ui.get_settings_error().starts_with("Not applied")
+        });
+        assert_eq!(app.config().click.interval_ms, 175);
+        assert_eq!(saved(path).click.interval_ms, 175);
+
+        step("Enter still commits");
+        type_interval(&[VK_1, VK_5, VK_0]);
+        press(gui, &tap(VK_RETURN));
+        pump_until("committed by Enter", Duration::from_secs(2), || {
+            app.config().click.interval_ms == 150
+        });
+        assert_eq!(ui.get_settings_error(), "");
+        let writes_before = std::fs::metadata(path).unwrap().modified().unwrap();
+        // Focus leaving the field afterwards commits nothing new (no extra write).
+        click_unmarked(empty);
+        pump(Duration::from_millis(300));
+        assert_eq!(
+            std::fs::metadata(path).unwrap().modified().unwrap(),
+            writes_before
+        );
+
+        step("a button action commits a pending edit first");
+        type_interval(&[VK_1, VK_6, VK_0]);
+        pump_until("typed", Duration::from_secs(2), || {
+            ui.get_interval_text() == "160"
+        });
+        ui.invoke_about_clicked(); // buttons do not take keyboard focus
+        pump_until(
+            "committed before the action",
+            Duration::from_secs(2),
+            || app.config().click.interval_ms == 160,
+        );
+        // Restore 150 for the rest of the test.
+        type_interval(&[VK_1, VK_5, VK_0]);
+        press(gui, &tap(VK_RETURN));
+        pump_until("restored", Duration::from_secs(2), || {
+            app.config().click.interval_ms == 150
+        });
+
         step("position jitter radius: validated, applied by the engine and saved");
         ui.set_radius_text("51".into());
         ui.invoke_settings_edited();
@@ -471,9 +572,17 @@ mod imp {
                 .to_string()
         };
 
+        step("only the three hotkey actions are offered");
+        let labels: Vec<String> = ui
+            .get_hotkeys()
+            .iter()
+            .map(|r| r.label.to_string())
+            .collect();
+        assert_eq!(labels, ["Toggle start/stop", "Set target", "Exit"]);
+
         step("record a Ctrl+Shift+letter hotkey by pressing it");
         focus(gui);
-        ui.invoke_start_recording(index(HotkeyAction::Start));
+        ui.invoke_start_recording(index(HotkeyAction::Exit));
         pump(Duration::from_millis(100));
         assert!(
             !app.hotkeys_active(),
@@ -499,16 +608,16 @@ mod imp {
             Key::K,
         );
         pump_until("binding recorded", Duration::from_secs(2), || {
-            app.config().hotkeys.start == Some(ctrl_shift_k)
+            app.config().hotkeys.exit == Some(ctrl_shift_k)
         });
         assert_eq!(ui.get_capturing_index(), -1);
         assert!(app.hotkeys_active());
-        assert_eq!(binding(HotkeyAction::Start), "Ctrl+Shift+K");
-        assert_eq!(saved(path).hotkeys.start, Some(ctrl_shift_k));
+        assert_eq!(binding(HotkeyAction::Exit), "Ctrl+Shift+K");
+        assert_eq!(saved(path).hotkeys.exit, Some(ctrl_shift_k));
 
         step("a key that would block typing is refused; Esc cancels");
         focus(gui);
-        ui.invoke_start_recording(index(HotkeyAction::Stop));
+        ui.invoke_start_recording(index(HotkeyAction::SetTarget));
         pump(Duration::from_millis(100));
         press(gui, &tap(VK_A));
         pump_until("refusal shown", Duration::from_secs(2), || {
@@ -516,24 +625,18 @@ mod imp {
         });
         assert_eq!(
             ui.get_capturing_index(),
-            index(HotkeyAction::Stop),
+            index(HotkeyAction::SetTarget),
             "still recording"
         );
         press(gui, &tap(VK_ESCAPE));
         pump_until("recording cancelled", Duration::from_secs(2), || {
             ui.get_capturing_index() == -1
         });
-        assert_eq!(app.config().hotkeys.stop, None);
+        assert_eq!(
+            app.config().hotkeys.set_target,
+            Some(Hotkey::plain(Key::F15))
+        );
         assert!(app.hotkeys_active());
-
-        step("a function key is recorded");
-        focus(gui);
-        ui.invoke_start_recording(index(HotkeyAction::Stop));
-        pump(Duration::from_millis(100));
-        press(gui, &tap(VK_F16));
-        pump_until("F16 recorded", Duration::from_secs(2), || {
-            app.config().hotkeys.stop == Some(Hotkey::plain(Key::F16))
-        });
 
         step("a combination held by another program cannot even be recorded");
         // Windows delivers a registered combination to its owner only, so the
@@ -557,10 +660,19 @@ mod imp {
         assert!(app.hotkeys_active());
         assert_eq!(other.shutdown(JOIN_TIMEOUT), ThreadExit::Clean);
 
+        step("a function key is recorded");
+        focus(gui);
+        ui.invoke_start_recording(index(HotkeyAction::SetTarget));
+        pump(Duration::from_millis(100));
+        press(gui, &tap(VK_F16));
+        pump_until("F16 recorded", Duration::from_secs(2), || {
+            app.config().hotkeys.set_target == Some(Hotkey::plain(Key::F16))
+        });
+
         step("clear a binding");
-        ui.invoke_hotkey_clear(index(HotkeyAction::Stop));
-        assert_eq!(app.config().hotkeys.stop, None);
-        assert_eq!(binding(HotkeyAction::Stop), "Not set");
+        ui.invoke_hotkey_clear(index(HotkeyAction::SetTarget));
+        assert_eq!(app.config().hotkeys.set_target, None);
+        assert_eq!(binding(HotkeyAction::SetTarget), "Not set");
 
         step("global hotkey works while the GUI is not focused");
         recorder.clear();
@@ -645,7 +757,7 @@ mod imp {
         assert_eq!(shown.title, "Autoclicker");
         assert!(tray.get_window_visible());
         assert_eq!(ui.get_status(), RunStatus::Stopped);
-        assert!(ui.get_status_detail().contains("clicks in total"));
+        assert_eq!(ui.get_status_detail(), "", "no click counter is shown");
         tray.invoke_toggle_window();
         pump_until("hidden again", Duration::from_secs(2), || {
             !app.window_visible()
@@ -712,8 +824,10 @@ mod imp {
         assert!(!ui.get_keep_on_top());
         assert_ne!(ui.get_target_text(), "Not set");
         assert_eq!(app.snapshot().target, app.config().click.target);
-        let start = ui.get_hotkeys().row_data(1).unwrap();
-        assert_eq!(start.binding, "Ctrl+Shift+K");
+        let rows = ui.get_hotkeys();
+        assert_eq!(rows.row_count(), 3);
+        assert_eq!(rows.row_data(2).unwrap().binding, "Ctrl+Shift+K", "exit");
+        assert_eq!(rows.row_data(1).unwrap().binding, "Not set", "set target");
         assert!(app.close().unwrap().is_clean());
         drop(app);
     }
@@ -741,6 +855,41 @@ mod imp {
         }
         assert!(app.close().unwrap().is_clean());
         assert_eq!(other.shutdown(JOIN_TIMEOUT), ThreadExit::Clean);
+    }
+
+    fn obsolete_start_stop_bindings_are_migrated(dir: &Path) {
+        step("a settings file with obsolete Start/Stop hotkeys loads and is migrated");
+        let path = dir.join("obsolete.toml");
+        let mut text = toml::to_string(&initial_config()).unwrap();
+        text = text.replace(
+            "[hotkeys]\n",
+            "[hotkeys]\nstart = \"Ctrl+Alt+S\"\nstop = \"Ctrl+Alt+D\"\n",
+        );
+        text = text.replace("interval_ms = 100", "interval_ms = 333");
+        std::fs::write(&path, &text).unwrap();
+        let app = App::new(options(&path)).expect("older file loads");
+        let warning = app.ui().get_config_warning().to_string();
+        assert!(warning.contains("no longer supported"), "{warning}");
+        assert_eq!(app.config().click.interval_ms, 333, "other settings kept");
+        assert_eq!(app.config().hotkeys.toggle, Some(Hotkey::plain(Key::F13)));
+        assert_eq!(app.ui().get_hotkeys().row_count(), 3);
+        let migrated = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            !migrated.contains("start =") && !migrated.contains("stop ="),
+            "{migrated}"
+        );
+        assert!(migrated.contains("interval_ms = 333"));
+        assert!(
+            !dir.join("obsolete.toml.bak").exists(),
+            "not treated as corrupt"
+        );
+        assert!(app.close().unwrap().is_clean());
+        drop(app);
+
+        // The notice is shown only once.
+        let again = App::new(options(&path)).unwrap();
+        assert_eq!(again.ui().get_config_warning(), "");
+        assert!(again.close().unwrap().is_clean());
     }
 
     fn corrupt_settings_are_reported(dir: &Path) {

@@ -606,6 +606,55 @@ pub fn simulate_session_end(window: WindowId, timeout: Duration) -> Option<isize
     (ok != 0).then_some(reply as isize)
 }
 
+/// The client area of a window in screen coordinates.
+pub fn client_rect(window: WindowId) -> Option<Rect> {
+    use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect;
+    let hwnd = window.0 as HWND;
+    let mut r = RECT::default();
+    // SAFETY: valid out-pointer; the handle is validated by the function.
+    if unsafe { GetClientRect(hwnd, &mut r) } == 0 {
+        return None;
+    }
+    let mut origin = POINT { x: 0, y: 0 };
+    // SAFETY: valid in/out pointer.
+    if unsafe { ClientToScreen(hwnd, &mut origin) } == 0 {
+        return None;
+    }
+    Some(Rect::new(
+        origin.x,
+        origin.y,
+        origin.x + r.right,
+        origin.y + r.bottom,
+    ))
+}
+
+/// Moves the cursor to `p` and performs a primary-button click that does
+/// *not* carry [`INJECTION_SIGNATURE`], so a [`MouseHookRecorder`] lets it
+/// through to the window under the cursor. Callers must make sure that
+/// window is their own. Returns the number of events inserted (2).
+pub fn click_unmarked(p: Point) -> usize {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+    };
+    // SAFETY: no pointer arguments.
+    unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(p.x, p.y) };
+    let (down, up) = if super::input::buttons_swapped() {
+        (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)
+    } else {
+        (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)
+    };
+    let mut inputs = [
+        super::input::mouse_input(down),
+        super::input::mouse_input(up),
+    ];
+    for i in &mut inputs {
+        i.Anonymous.mi.dwExtraInfo = 0;
+    }
+    // SAFETY: two valid INPUT structures and the matching structure size.
+    unsafe { SendInput(2, inputs.as_ptr(), size_of::<INPUT>() as i32) as usize }
+}
+
 /// Posts `WM_CLOSE` to a window (what the title bar's close button does).
 pub fn post_close(window: WindowId) -> bool {
     use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};

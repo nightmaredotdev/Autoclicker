@@ -140,8 +140,6 @@ impl Runtime {
             let release_first = e.hotkey.modifiers;
             let command = match e.action {
                 HotkeyAction::Toggle => Command::Toggle { release_first },
-                HotkeyAction::Start => Command::Start { release_first },
-                HotkeyAction::Stop => Command::Stop,
                 HotkeyAction::SetTarget => Command::SetTargetFromCursor,
                 HotkeyAction::Exit => return on_exit(),
             };
@@ -288,13 +286,7 @@ mod tests {
     }
 
     fn bindings(keys: &[(HotkeyAction, Key)]) -> HotkeyBindings {
-        let mut hotkeys = HotkeyConfig {
-            toggle: None,
-            start: None,
-            stop: None,
-            set_target: None,
-            exit: None,
-        };
+        let mut hotkeys = HotkeyConfig::none();
         for &(action, key) in keys {
             hotkeys.set(action, Some(Hotkey::plain(key)));
         }
@@ -433,7 +425,7 @@ mod tests {
 
         let wanted = bindings(&[
             (HotkeyAction::Toggle, Key::F16),
-            (HotkeyAction::Start, Key::F15),
+            (HotkeyAction::SetTarget, Key::F15),
             (HotkeyAction::Exit, Key::F14),
         ]);
         let Err(RebindError::Conflicts(failed)) = rt.rebind(wanted) else {

@@ -123,6 +123,22 @@ impl App {
                 Config::default()
             }
         };
+        if config.hotkeys.had_obsolete_bindings() {
+            // Pre-1.0 files may contain separate start/stop bindings: drop
+            // them (once) and say so, keeping every other setting.
+            config.hotkeys.clear_obsolete_bindings();
+            warnings.push(
+                "Separate Start and Stop hotkeys are no longer supported and were removed from \
+                 your settings. Use the Toggle start/stop hotkey instead; your other settings \
+                 are unchanged."
+                    .into(),
+            );
+            if let Some(path) = &options.config_path
+                && let Err(e) = config_store::save(path, &config)
+            {
+                warnings.push(format!("Could not update the settings file: {e}"));
+            }
+        }
         if let Some(p) = config.click.target
             && WindowsInput::new().monitor_bounds(p).is_err()
         {
@@ -483,6 +499,7 @@ impl Controller {
     // ---------------------------------------------------------------- actions
 
     fn start_stop(&self) {
+        self.commit_pending_edits();
         let active = matches!(
             self.snapshot.borrow().state,
             RunState::Running | RunState::WaitingForModifiers
@@ -509,6 +526,7 @@ impl Controller {
     }
 
     fn select_mode(&self, fixed: bool) {
+        self.commit_pending_edits();
         let mut click = self.config.borrow().click.clone();
         click.mode = if fixed {
             TargetMode::Fixed
@@ -554,6 +572,20 @@ impl Controller {
         });
     }
 
+    /// Commits a timing field that is still being edited. Buttons do not take
+    /// keyboard focus in Slint, so clicking one would otherwise leave the edit
+    /// pending; every button and tray action calls this first. A commit with
+    /// unchanged values does nothing (no write, no message).
+    fn commit_pending_edits(&self) {
+        if self
+            .ui
+            .upgrade()
+            .is_some_and(|ui| ui.get_settings_pending())
+        {
+            self.settings_commit();
+        }
+    }
+
     fn settings_commit(&self) {
         let Some(ui) = self.ui.upgrade() else { return };
         let fields = self.fields(&ui);
@@ -583,6 +615,7 @@ impl Controller {
     // ---------------------------------------------------------------- target
 
     fn pick_target(self: &Rc<Self>) {
+        self.commit_pending_edits();
         if self.pick_remaining.get() > 0 {
             self.cancel_pick();
             return;
@@ -659,6 +692,7 @@ impl Controller {
     }
 
     fn hotkey_record(&self, index: i32) {
+        self.commit_pending_edits();
         let Some(&action) = usize::try_from(index)
             .ok()
             .and_then(|i| HotkeyAction::ALL.get(i))
@@ -726,6 +760,7 @@ impl Controller {
     }
 
     fn hotkey_clear(&self, index: i32) {
+        self.commit_pending_edits();
         let Some(&action) = usize::try_from(index)
             .ok()
             .and_then(|i| HotkeyAction::ALL.get(i))
@@ -796,11 +831,13 @@ impl Controller {
     // ---------------------------------------------------------------- window
 
     fn keep_on_top(&self, on: bool) {
+        self.commit_pending_edits();
         self.config.borrow_mut().window.always_on_top = on;
         self.save();
     }
 
     fn show_about(&self) {
+        self.commit_pending_edits();
         let mut about = self.about.borrow_mut();
         if about.is_none() {
             let Ok(window) = AboutWindow::new() else {
@@ -841,6 +878,7 @@ impl Controller {
     /// Hides the window to the notification area. Clicking, hotkeys and the
     /// tray keep working.
     fn hide_window(&self) {
+        self.commit_pending_edits();
         if self.capturing.get().is_some() {
             self.end_capture();
         }
@@ -856,6 +894,7 @@ impl Controller {
     }
 
     fn open_logs(&self) {
+        self.commit_pending_edits();
         let Some(dir) = &self.log_dir else {
             self.show_notice("Logging is not available.".into());
             return;
@@ -872,9 +911,11 @@ impl Controller {
     /// hotkeys and join their threads, remove the tray icon, close the
     /// windows and leave the event loop. Runs once.
     fn close(&self) -> Option<ShutdownReport> {
-        if self.closed.replace(true) {
+        if self.closed.get() {
             return self.report.get();
         }
+        self.commit_pending_edits();
+        self.closed.set(true);
         info!("shutting down");
         self.cancel_pick();
         self.notice_timer.stop();

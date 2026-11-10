@@ -47,7 +47,9 @@ with `-NoBuild`) and writes
 * with `-Launch` (interactive desktop), that the executable starts from a
   different directory (a path with spaces), uses
   `%APPDATA%\Autoclicker\config.toml`, writes nothing next to itself, and
-  exits cleanly. This reads your real settings file but does not change it.
+  exits cleanly. This reads your real settings file but does not change it
+  (except the one-time removal of obsolete Start/Stop hotkeys from a pre-1.0
+  settings file).
 
 CI runs the packaging and the non-interactive checks on every push. It does
 not publish anything.

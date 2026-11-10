@@ -72,13 +72,7 @@ fn primary_center_rect(size: i32) -> Rect {
 
 fn bindings(f: impl FnOnce(&mut HotkeyConfig)) -> autoclicker_core::config::HotkeyBindings {
     let mut cfg = Config {
-        hotkeys: HotkeyConfig {
-            toggle: None,
-            start: None,
-            stop: None,
-            set_target: None,
-            exit: None,
-        },
+        hotkeys: HotkeyConfig::none(),
         ..Config::default()
     };
     f(&mut cfg.hotkeys);
