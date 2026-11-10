@@ -401,7 +401,7 @@ fn the_log_records_startup_problems_and_shutdown() {
         "INFO  [autoclicker::gui] Autoclicker ",
         "hotkey toggle = F13",
         "hotkey set target = F15 could not be registered",
-        "clicking started (current cursor mode)",
+        "clicking started (current position mode)",
         "clicking stopped after",
         "shutting down",
         "engine and hotkey threads stopped cleanly",

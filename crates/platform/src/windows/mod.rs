@@ -12,6 +12,7 @@ mod input;
 mod instance;
 mod keys;
 mod message;
+mod picker;
 mod waiter;
 
 #[cfg(any(test, feature = "diagnostics"))]
@@ -31,4 +32,5 @@ pub use instance::{
 };
 pub use keys::virtual_key;
 pub use message::show_error_message;
+pub use picker::{PickOutcome, PointPicker};
 pub use waiter::HighResWaiter;

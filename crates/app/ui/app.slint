@@ -206,6 +206,83 @@ component FieldRow inherits HorizontalLayout {
     }
 }
 
+// A two-option segmented control: both options always visible, the active one
+// filled with the accent colour. Clicking an option selects it immediately.
+//
+// Keyboard: one Tab stop (like a radio group); Left/Right switch, Home/End
+// go to the first or last option. A focus ring marks the active option while
+// the control has keyboard focus. Mouse clicks do not focus it.
+component SegmentedControl inherits FocusScope {
+    in property <[string]> options;
+    in property <int> selected;
+    in property <string> label;
+    callback select(int);
+    focus-on-click: false;
+    accessible-role: radio-group;
+    accessible-label: root.label;
+    key-pressed(event) => {
+        if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+            return reject;
+        }
+        if event.text == Key.LeftArrow && root.selected > 0 {
+            root.select(root.selected - 1);
+            return accept;
+        }
+        if event.text == Key.RightArrow && root.selected < root.options.length - 1 {
+            root.select(root.selected + 1);
+            return accept;
+        }
+        if event.text == Key.LeftArrow || event.text == Key.RightArrow {
+            return accept;
+        }
+        if event.text == Key.Home {
+            root.select(0);
+            return accept;
+        }
+        if event.text == Key.End {
+            root.select(root.options.length - 1);
+            return accept;
+        }
+        reject
+    }
+    Rectangle {
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Palette.border;
+        background: Palette.control-background;
+        HorizontalLayout {
+            padding: 2px;
+            spacing: 2px;
+            for option[index] in root.options: Rectangle {
+                horizontal-stretch: 1;
+                min-height: 28px;
+                border-radius: 4px;
+                accessible-role: radio-button;
+                accessible-label: option;
+                accessible-checkable: true;
+                accessible-checked: root.selected == index;
+                accessible-action-default => { root.select(index); }
+                background: root.selected == index ? Palette.accent-background : transparent;
+                // Keyboard focus ring on the active option.
+                border-width: root.has-focus && root.selected == index ? 2px : 0px;
+                border-color: Palette.foreground;
+                segment-area := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.select(index); }
+                }
+                Text {
+                    text: option;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    font-weight: root.selected == index ? 600 : 400;
+                    color: root.selected == index ? Palette.accent-foreground
+                        : segment-area.has-hover ? Palette.foreground : Theme.muted;
+                }
+            }
+        }
+    }
+}
+
 export component AboutWindow inherits Window {
     in property <string> version;
     callback close-clicked();
@@ -227,7 +304,7 @@ export component AboutWindow inherits Window {
             color: Theme.muted;
         }
         Text {
-            text: "A desktop autoclicker with precise, configurable click timing, human-like variation, fixed-target or cursor clicking, and global hotkeys.";
+            text: "A desktop autoclicker with precise, configurable click timing, human-like variation, clicking at a fixed position or at the cursor, and global hotkeys.";
             wrap: word-wrap;
         }
         Text {
@@ -262,7 +339,8 @@ export component MainWindow inherits Window {
     in property <string> toggle-key;
     in-out property <bool> fixed-mode: true;
     in property <string> target-text: "Not set";
-    in property <int> pick-countdown;
+    /// A position is being picked (the next click on screen sets it).
+    in property <bool> picking;
     in-out property <string> interval-text;
     in-out property <string> jitter-text;
     in-out property <string> hold-text;
@@ -298,6 +376,12 @@ export component MainWindow inherits Window {
     callback status-ready();
     callback exit-requested();
     callback show-requested();
+    callback pick-decided();
+
+    /// Whether the mode control has keyboard focus (read by the GUI tests).
+    out property <bool> mode-control-focused: mode-control.has-focus;
+    /// "Pick target" is only available in Fixed position mode.
+    out property <bool> pick-enabled: root.fixed-mode;
 
     /// Puts keyboard focus into the Interval field (used by the GUI tests).
     public function focus-interval-field() {
@@ -456,8 +540,6 @@ export component MainWindow inherits Window {
                         accessible-item-index: index;
                         accessible-item-selectable: true;
                         accessible-item-selected: root.current-tab == index;
-                        background: tab-area.has-hover && root.current-tab != index
-                            ? Palette.alternate-background.transparentize(40%) : transparent;
                         // Keyboard focus ring on the active tab.
                         border-width: tab-bar.has-focus && root.current-tab == index ? 2px : 0px;
                         border-color: Palette.foreground;
@@ -472,7 +554,10 @@ export component MainWindow inherits Window {
                             horizontal-alignment: center;
                             vertical-alignment: center;
                             font-weight: root.current-tab == index ? 600 : 400;
-                            color: root.current-tab == index ? Palette.foreground : Theme.muted;
+                            // Hover only brightens the label; the active tab
+                            // stays marked by weight and the accent underline.
+                            color: root.current-tab == index || tab-area.has-hover
+                                ? Palette.foreground : Theme.muted;
                         }
                         if root.current-tab == index: Rectangle {
                             y: parent.height - 3px;
@@ -509,42 +594,63 @@ export component MainWindow inherits Window {
                     alignment: start;
                     Card {
                         title: "TARGET";
-                        HorizontalLayout {
-                            spacing: 6px;
-                            Button {
-                                text: "Fixed target";
-                                primary: root.fixed-mode;
-                                horizontal-stretch: 1;
-                                clicked => { root.mode-selected(true); }
-                            }
-                            Button {
-                                text: "Current cursor";
-                                primary: !root.fixed-mode;
-                                horizontal-stretch: 1;
-                                clicked => { root.mode-selected(false); }
+                        mode-control := SegmentedControl {
+                            label: "Click position";
+                            options: ["Fixed position", "Current position"];
+                            selected: root.fixed-mode ? 0 : 1;
+                            select(index) => {
+                                // A click (not a key press) moves the focus off an
+                                // edited field, which commits it.
+                                if !self.has-focus { root.release-field-focus(); }
+                                root.mode-selected(index == 0);
                             }
                         }
-                        if root.fixed-mode: HorizontalLayout {
+                        // The saved position stays visible (and is kept) in both
+                        // modes; it is only used, and can only be picked, in
+                        // Fixed position mode.
+                        HorizontalLayout {
                             spacing: 8px;
-                            VerticalLayout {
+                            Text {
+                                text: "Position";
+                                vertical-alignment: center;
+                                color: root.fixed-mode ? Palette.foreground : Theme.idle;
+                            }
+                            Rectangle {
                                 horizontal-stretch: 1;
-                                alignment: center;
+                                min-height: 32px;
+                                border-radius: 4px;
+                                border-width: 1px;
+                                border-color: root.picking ? Palette.accent-background : Palette.border;
+                                background: root.fixed-mode ? Palette.control-background
+                                    : Palette.control-background.transparentize(60%);
+                                accessible-role: text;
+                                accessible-label: "Position";
+                                accessible-value: root.target-text;
                                 Text {
-                                    text: root.pick-countdown > 0
-                                        ? "Move the cursor to the target… " + root.pick-countdown
-                                        : "Target: " + root.target-text;
-                                    font-weight: root.pick-countdown > 0 ? 600 : 400;
-                                    wrap: word-wrap;
+                                    x: 8px;
+                                    width: parent.width - 16px;
+                                    text: root.target-text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    color: root.fixed-mode ? Palette.control-foreground : Theme.idle;
                                 }
                             }
                             Button {
-                                text: root.pick-countdown > 0 ? "Cancel" : "Pick target";
+                                text: root.picking ? "Cancel" : "Pick target";
+                                enabled: root.pick-enabled;
+                                min-width: 96px;
                                 clicked => { root.pick-target-clicked(); }
                             }
                         }
-                        if !root.fixed-mode: Text {
-                            text: "Clicks wherever the cursor is. The cursor is never moved.";
-                            color: Theme.muted;
+                        Text {
+                            text: root.picking
+                                ? "Click to set the position. Right-click to cancel."
+                                : root.fixed-mode
+                                    ? "Clicks at the saved position. Use Pick target to change it."
+                                    : "Clicks wherever the cursor is. The cursor is never moved.";
+                            font-weight: root.picking ? 600 : 400;
+                            color: root.picking ? Palette.foreground : Theme.muted;
+                            font-size: 12px;
                             wrap: word-wrap;
                         }
                     }
@@ -578,7 +684,7 @@ export component MainWindow inherits Window {
                         }
                         FieldRow {
                             label: "Position jitter";
-                            description: "Randomly offsets the click position within the configured radius. Fixed target mode only.";
+                            description: "Randomly offsets the click position within the configured radius. Fixed position mode only.";
                             unit: "px";
                             enabled: root.fixed-mode;
                             value <=> root.radius-text;
@@ -599,40 +705,48 @@ export component MainWindow inherits Window {
                 width: parent.width;
                 height: parent.height;
                 visible: root.current-tab == 1;
-                padding-top: 14px;
+                padding-top: 10px;
                 spacing: Theme.gap;
                 alignment: start;
-                for row[index] in root.hotkeys: HorizontalLayout {
-                    spacing: 8px;
-                    padding-left: 4px;
-                    padding-right: 4px;
-                    VerticalLayout {
-                        horizontal-stretch: 1;
-                        alignment: center;
-                        Text { text: row.label; }
-                        if row.problem != "": Text {
-                            text: row.problem;
-                            color: Theme.error;
-                            font-size: 11px;
-                            wrap: word-wrap;
+                // All bindings in one card, separated by subtle dividers.
+                Card {
+                    for row[index] in root.hotkeys: VerticalLayout {
+                        spacing: 8px;
+                        if index > 0: Rectangle {
+                            height: 1px;
+                            background: Palette.border.transparentize(30%);
                         }
-                    }
-                    Button {
-                        text: root.capturing-index == index ? "Press keys…" : row.binding;
-                        primary: root.capturing-index == index;
-                        min-width: 132px;
-                        clicked => {
-                            if root.capturing-index == index {
-                                root.hotkey-cancel();
-                            } else {
-                                root.start-recording(index);
+                        HorizontalLayout {
+                            spacing: 8px;
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                Text { text: row.label; }
+                                if row.problem != "": Text {
+                                    text: row.problem;
+                                    color: Theme.error;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                            Button {
+                                text: root.capturing-index == index ? "Press keys…" : row.binding;
+                                primary: root.capturing-index == index;
+                                min-width: 132px;
+                                clicked => {
+                                    if root.capturing-index == index {
+                                        root.hotkey-cancel();
+                                    } else {
+                                        root.start-recording(index);
+                                    }
+                                }
+                            }
+                            Button {
+                                text: "Clear";
+                                enabled: row.bound && root.capturing-index < 0;
+                                clicked => { root.hotkey-clear(index); }
                             }
                         }
-                    }
-                    Button {
-                        text: "Clear";
-                        enabled: row.bound && root.capturing-index < 0;
-                        clicked => { root.hotkey-clear(index); }
                     }
                 }
                 if root.hotkeys-error != "": Message { text: root.hotkeys-error; }

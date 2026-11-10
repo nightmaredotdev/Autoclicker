@@ -2,7 +2,7 @@ Autoclicker {{VERSION}} for Windows (portable)
 ==============================================
 
 A desktop autoclicker with precise, configurable click timing, human-like
-variation, fixed-target or cursor clicking, and global hotkeys.
+variation, clicking at a fixed position or at the cursor, and global hotkeys.
 
 Requirements: Windows 10 or 11 (64-bit). No installation or administrator
 rights are needed.
@@ -11,8 +11,10 @@ Getting started
 ---------------
 1. Extract this folder anywhere (for example to your Desktop or a USB drive).
 2. Run autoclicker.exe.
-3. Choose "Fixed target" (click a saved point) or "Current cursor" (click
-   wherever the cursor is), adjust the timing, and press Start.
+3. Choose "Fixed position" or "Current position" (click wherever the
+   cursor is). For a fixed position, click "Pick target", then click the
+   spot on the screen (right-click cancels). Adjust the timing and press
+   Start.
 
 Default hotkeys (global, they work while other programs are focused):
   F6              Toggle start/stop clicking

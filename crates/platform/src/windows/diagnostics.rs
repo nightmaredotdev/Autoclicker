@@ -11,6 +11,7 @@ use super::error::Win32Error;
 use super::input::INJECTION_SIGNATURE;
 use autoclicker_core::geometry::{Point, Rect};
 use std::mem::size_of;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread::JoinHandle;
@@ -85,6 +86,8 @@ pub struct HookEvent {
 struct HookShared {
     events: Mutex<Vec<HookEvent>>,
     block: bool,
+    /// Record (and block) every event, not only this application's.
+    all: AtomicBool,
 }
 
 static HOOK_STATE: Mutex<Option<Arc<HookShared>>> = Mutex::new(None);
@@ -93,25 +96,25 @@ unsafe extern "system" fn mouse_hook_proc(code: i32, wparam: WPARAM, lparam: LPA
     if code >= 0 {
         // SAFETY: for WH_MOUSE_LL with code >= 0, lparam points to a valid MSLLHOOKSTRUCT.
         let info = unsafe { *(lparam as *const MSLLHOOKSTRUCT) };
-        if info.dwExtraInfo == INJECTION_SIGNATURE {
-            let shared = HOOK_STATE
+        let shared = HOOK_STATE
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(shared) = shared
+            && (shared.all.load(Ordering::Relaxed) || info.dwExtraInfo == INJECTION_SIGNATURE)
+        {
+            shared
+                .events
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
-                .clone();
-            if let Some(shared) = shared {
-                shared
-                    .events
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(HookEvent {
-                        at: Instant::now(),
-                        message: MouseMessage::from_raw(wparam as u32),
-                        point: Point::new(info.pt.x, info.pt.y),
-                        injected_flag: info.flags & LLMHF_INJECTED != 0,
-                    });
-                if shared.block {
-                    return 1; // swallow: no application receives this event
-                }
+                .push(HookEvent {
+                    at: Instant::now(),
+                    message: MouseMessage::from_raw(wparam as u32),
+                    point: Point::new(info.pt.x, info.pt.y),
+                    injected_flag: info.flags & LLMHF_INJECTED != 0,
+                });
+            if shared.block {
+                return 1; // swallow: no application receives this event
             }
         }
     }
@@ -134,9 +137,21 @@ unsafe impl Send for SendHook {}
 
 impl MouseHookRecorder {
     pub fn start(block: bool) -> Result<Self, Win32Error> {
+        Self::start_with(block, false)
+    }
+
+    /// Records (and, with `block`, swallows) **every** mouse event, including
+    /// the user's own. Hooks installed later run first, so this shows what
+    /// they let through.
+    pub fn start_all(block: bool) -> Result<Self, Win32Error> {
+        Self::start_with(block, true)
+    }
+
+    fn start_with(block: bool, all: bool) -> Result<Self, Win32Error> {
         let shared = Arc::new(HookShared {
             events: Mutex::new(Vec::new()),
             block,
+            all: AtomicBool::new(all),
         });
         {
             let mut state = HOOK_STATE.lock().unwrap_or_else(PoisonError::into_inner);
@@ -198,6 +213,12 @@ impl MouseHookRecorder {
                 })
             }
         }
+    }
+
+    /// Switches between recording only this application's events and
+    /// recording (and, if blocking, swallowing) every mouse event.
+    pub fn set_record_all(&self, all: bool) {
+        self.shared.all.store(all, Ordering::Relaxed);
     }
 
     pub fn events(&self) -> Vec<HookEvent> {
@@ -634,12 +655,18 @@ pub fn client_rect(window: WindowId) -> Option<Rect> {
 /// through to the window under the cursor. Callers must make sure that
 /// window is their own. Returns the number of events inserted (2).
 pub fn click_unmarked(p: Point) -> usize {
+    click_unmarked_button(p, false)
+}
+
+/// Like [`click_unmarked`], with the secondary (`secondary = true`) or
+/// primary logical button: what a user's click looks like to hooks.
+pub fn click_unmarked_button(p: Point, secondary: bool) -> usize {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
         MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
     };
     // SAFETY: no pointer arguments.
     unsafe { windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos(p.x, p.y) };
-    let (down, up) = if super::input::buttons_swapped() {
+    let (down, up) = if super::input::buttons_swapped() != secondary {
         (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP)
     } else {
         (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP)

@@ -23,7 +23,7 @@ fn main() {
 #[cfg(windows)]
 mod imp {
     use autoclicker::config_store;
-    use autoclicker::gui::{App, GuiOptions, PICK_COUNTDOWN_SECONDS};
+    use autoclicker::gui::{App, GuiOptions};
     use autoclicker::runtime::{JOIN_TIMEOUT, WaiterKind};
     use autoclicker::ui::RunStatus;
     use autoclicker_core::backend::InputBackend;
@@ -33,8 +33,8 @@ mod imp {
     use autoclicker_core::keys::{Hotkey, Key, Modifiers};
     use autoclicker_platform::diagnostics::{
         HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, click_unmarked,
-        client_rect, cursor_position, force_foreground, foreground_window, monitors, post_close,
-        send_keys, window_at, windows_of_process,
+        click_unmarked_button, client_rect, cursor_position, force_foreground, foreground_window,
+        monitors, post_close, send_keys, window_at, windows_of_process,
     };
     use autoclicker_platform::{HotkeyService, WindowsInput};
     use slint::{Model, Timer, TimerMode};
@@ -105,6 +105,28 @@ mod imp {
 
     fn downs(events: &[HookEvent]) -> usize {
         events.iter().filter(|e| e.message.is_down()).count()
+    }
+
+    /// A point on the primary monitor that is not over one of this process's
+    /// windows: "Pick target" deliberately ignores clicks on its own windows.
+    fn point_off_own_windows(offset: Point) -> Point {
+        let m = monitors()[0];
+        let (w, h) = (m.right - m.left, m.bottom - m.top);
+        let own: Vec<_> = own_windows().into_iter().map(|w| w.id).collect();
+        [(1, 3), (2, 3), (3, 4), (1, 4)]
+            .iter()
+            .flat_map(|&(a, b)| [(a, b), (b - a, b)])
+            .map(|(a, b)| Point::new(m.left + w * a / b + offset.x, m.top + h * a / b + offset.y))
+            .find(|&p| !own.contains(&window_at(p)))
+            .expect("a point outside this process's windows")
+    }
+
+    /// Button presses and releases (of any origin) seen by the recorder.
+    fn button_events(events: &[HookEvent]) -> usize {
+        events
+            .iter()
+            .filter(|e| e.message.is_down() || e.message.is_up())
+            .count()
     }
 
     fn assert_paired(events: &[HookEvent]) {
@@ -282,25 +304,118 @@ mod imp {
         assert_eq!(main_window("Autoclicker").title, "Autoclicker");
         recorder.clear();
 
-        step("fixed mode: pick target with the countdown");
+        // While picking, the recorder (installed before the picker, so it
+        // runs after it) records and swallows every mouse event: whatever the
+        // picker lets through is visible here and never reaches the desktop.
+        recorder.set_record_all(true);
+        recorder.clear();
+
+        step("pick target: waits for a click, with no timeout");
         ui.invoke_mode_selected(true);
-        let m = monitors()[0];
-        let target = Point::new(
-            m.left + (m.right - m.left) / 3,
-            m.top + (m.bottom - m.top) / 3,
+        assert!(
+            ui.get_pick_enabled(),
+            "Pick target is enabled in Fixed position mode"
         );
-        WindowsInput::new().move_cursor(target).unwrap();
+        let target = point_off_own_windows(Point::new(0, 0));
         ui.invoke_pick_target_clicked();
-        assert_eq!(ui.get_pick_countdown(), PICK_COUNTDOWN_SECONDS);
-        pump_until("countdown finished", Duration::from_secs(6), || {
-            ui.get_pick_countdown() == 0
-        });
+        assert!(ui.get_picking() && app.picking());
+        pump(Duration::from_millis(3500)); // longer than the old countdown
+        assert!(ui.get_picking(), "picking has no timeout");
+        assert_eq!(ui.get_target_text(), "Not set");
+
+        step("pick target: the next left-click sets the position and is swallowed");
+        recorder.clear();
+        assert_eq!(click_unmarked_button(target, false), 2);
         let expected = format!("{}, {}", target.x, target.y);
         pump_until("target displayed", Duration::from_secs(2), || {
             ui.get_target_text() == expected
         });
+        assert!(!ui.get_picking() && !app.picking());
+        assert!(ui.get_notice_text().contains("Target set"));
         assert_eq!(app.config().click.target, Some(target));
         assert_eq!(saved(path).click.target, Some(target));
+        pump(Duration::from_millis(200));
+        assert_eq!(
+            button_events(&recorder.events()),
+            0,
+            "the picking click must not reach anything"
+        );
+        assert_eq!(app.snapshot().target, Some(target), "engine uses it");
+
+        step("pick target: a right-click cancels and keeps the saved position");
+        ui.invoke_pick_target_clicked();
+        assert!(ui.get_picking());
+        recorder.clear();
+        assert_eq!(
+            click_unmarked_button(Point::new(target.x + 70, target.y + 50), true),
+            2
+        );
+        pump_until("pick cancelled", Duration::from_secs(2), || {
+            !ui.get_picking()
+        });
+        assert!(ui.get_notice_text().contains("cancelled"));
+        assert_eq!(ui.get_target_text(), expected);
+        assert_eq!(app.config().click.target, Some(target));
+        assert_eq!(saved(path).click.target, Some(target));
+        pump(Duration::from_millis(200));
+        assert_eq!(
+            button_events(&recorder.events()),
+            0,
+            "the cancelling click must not reach anything (no context menu)"
+        );
+
+        step("pick target: the Cancel button ends picking and removes the hook");
+        ui.invoke_pick_target_clicked();
+        assert!(ui.get_picking());
+        ui.invoke_pick_target_clicked(); // now labelled Cancel
+        assert!(!ui.get_picking() && !app.picking());
+        recorder.clear();
+        assert_eq!(click_unmarked_button(target, false), 2);
+        assert!(
+            recorder.wait_for(Duration::from_secs(2), |e| button_events(e) >= 2),
+            "after cancelling, clicks are no longer intercepted"
+        );
+        assert_eq!(app.config().click.target, Some(target));
+
+        step("pick target: the engine's own clicks never pick or cancel");
+        ui.invoke_pick_target_clicked();
+        recorder.clear();
+        ui.invoke_start_stop_clicked();
+        pump_until("engine clicks", Duration::from_secs(5), || {
+            downs(&recorder.events()) >= 3
+        });
+        ui.invoke_start_stop_clicked();
+        pump_until("stopped", Duration::from_secs(2), || {
+            ui.get_status() == RunStatus::Stopped
+        });
+        assert!(ui.get_picking(), "still picking after the engine clicked");
+        assert_eq!(app.config().click.target, Some(target));
+        assert_paired(
+            &recorder
+                .events()
+                .into_iter()
+                .filter(|e| e.message.is_down() || e.message.is_up())
+                .collect::<Vec<_>>(),
+        );
+
+        step("Current position mode: picking is disabled and the position is kept");
+        ui.invoke_mode_selected(false);
+        assert!(!ui.get_fixed_mode() && !ui.get_pick_enabled());
+        assert!(
+            !ui.get_picking() && !app.picking(),
+            "switching mode cancels"
+        );
+        assert_eq!(ui.get_target_text(), expected, "still shown");
+        assert_eq!(saved(path).click.target, Some(target), "still saved");
+        ui.invoke_pick_target_clicked();
+        assert!(!ui.get_picking(), "no picking in Current position mode");
+        ui.invoke_mode_selected(true);
+        assert!(ui.get_pick_enabled());
+        assert_eq!(app.config().click.target, Some(target));
+        assert_eq!(ui.get_target_text(), expected);
+
+        recorder.set_record_all(false);
+        recorder.clear();
 
         step("fixed mode: clicks land on the target within the jitter radius");
         WindowsInput::new()
@@ -327,14 +442,19 @@ mod imp {
         }
         recorder.clear();
 
-        step("capture the target directly");
-        let second = Point::new(target.x + 40, target.y + 30);
-        WindowsInput::new().move_cursor(second).unwrap();
-        app.capture_target_now();
+        step("pick a second position");
+        let second = point_off_own_windows(Point::new(40, 30));
+        recorder.set_record_all(true);
+        ui.invoke_pick_target_clicked();
+        assert_eq!(click_unmarked_button(second, false), 2);
         let expected = format!("{}, {}", second.x, second.y);
         pump_until("new target displayed", Duration::from_secs(2), || {
             ui.get_target_text() == expected
         });
+        assert_eq!(saved(path).click.target, Some(second));
+        pump(Duration::from_millis(200));
+        recorder.set_record_all(false);
+        recorder.clear();
 
         step("invalid settings are rejected with feedback and never applied");
         let before = saved(path);
@@ -567,6 +687,51 @@ mod imp {
             Duration::from_secs(2),
             || !ui.get_tab_bar_focused(),
         );
+
+        step("keyboard: the mode control is one Tab stop and arrow keys switch modes");
+        ui.invoke_release_field_focus();
+        pump(Duration::from_millis(100));
+        let mut presses = 0;
+        while !ui.get_mode_control_focused() {
+            assert!(presses < 8, "Tab never reached the mode control");
+            press(gui, &tap(VK_TAB));
+            pump(Duration::from_millis(80));
+            presses += 1;
+        }
+        assert!(ui.get_fixed_mode());
+        press(gui, &tap(VK_RIGHT));
+        pump_until(
+            "Right selects Current position",
+            Duration::from_secs(2),
+            || !ui.get_fixed_mode(),
+        );
+        assert_eq!(saved(path).click.mode, TargetMode::Cursor);
+        press(gui, &tap(VK_RIGHT)); // already the last option
+        pump(Duration::from_millis(100));
+        assert!(!ui.get_fixed_mode());
+        press(gui, &tap(VK_LEFT));
+        pump_until(
+            "Left selects Fixed position",
+            Duration::from_secs(2),
+            || ui.get_fixed_mode(),
+        );
+        press(gui, &tap(VK_END));
+        pump_until(
+            "End selects the last option",
+            Duration::from_secs(2),
+            || !ui.get_fixed_mode(),
+        );
+        press(gui, &tap(VK_HOME));
+        pump_until(
+            "Home selects the first option",
+            Duration::from_secs(2),
+            || ui.get_fixed_mode(),
+        );
+        assert!(ui.get_mode_control_focused(), "arrow keys keep the focus");
+        assert_eq!(app.config().click.mode, TargetMode::Fixed);
+        assert_eq!(app.config().click.target, Some(second), "position kept");
+        ui.invoke_release_field_focus();
+        pump(Duration::from_millis(100));
 
         step("keyboard: moving focus to the tab bar commits an edit, then arrows switch");
         type_interval(&[VK_1, VK_5, VK_5]);
@@ -824,6 +989,7 @@ mod imp {
 
         step("global hotkey works while the GUI is not focused");
         recorder.clear();
+        let m = monitors()[0];
         let r = Rect::new(m.right - 260, m.bottom - 260, m.right - 60, m.bottom - 60);
         let other_window =
             TestWindow::create(r, WindowKind::TopmostPopup, "unfocused test").unwrap();

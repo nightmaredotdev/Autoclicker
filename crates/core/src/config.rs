@@ -38,8 +38,8 @@ pub enum TargetMode {
 impl fmt::Display for TargetMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            TargetMode::Fixed => "fixed target",
-            TargetMode::Cursor => "current cursor",
+            TargetMode::Fixed => "fixed position",
+            TargetMode::Cursor => "current position",
         })
     }
 }

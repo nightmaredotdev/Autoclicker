@@ -532,3 +532,120 @@ fn session_end_runs_the_callback_before_returning() {
     );
     assert_eq!(events.shutdown(Duration::from_secs(2)), ThreadExit::Clean);
 }
+
+fn button_events(net: &MouseHookRecorder) -> Vec<MouseMessage> {
+    net.events()
+        .iter()
+        .map(|e| e.message)
+        .filter(|m| m.is_down() || m.is_up())
+        .collect()
+}
+
+#[test]
+#[ignore = "needs an interactive, unlocked Windows desktop"]
+fn point_picker_takes_the_next_user_click_and_swallows_it() {
+    let _g = setup();
+    let _restore = CursorRestore::save();
+    // Safety net, installed first so it runs after the picker: it records and
+    // swallows everything the picker lets through, so nothing in this test
+    // reaches the desktop.
+    let net = MouseHookRecorder::start_all(true).expect("mouse hook");
+    let area = primary_center_rect(200);
+    let spot = Point::new(area.left + 13, area.top + 17);
+    let own = TestWindow::create(
+        primary_center_rect(120),
+        WindowKind::TopmostPopup,
+        "picker test",
+    )
+    .expect("test window");
+    let own_center = {
+        let r = primary_center_rect(120);
+        Point::new((r.left + r.right) / 2, (r.top + r.bottom) / 2)
+    };
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(window_at(own_center), own.id(), "test window not on top");
+    assert_ne!(window_at(spot), own.id());
+
+    let (tx, rx) = mpsc::channel();
+    let picker = PointPicker::start(move |o| {
+        let _ = tx.send(o);
+    })
+    .expect("picker");
+
+    // The application's own (signed) clicks are ignored by the picker.
+    let mut input = WindowsInput::new();
+    input.move_cursor(spot).unwrap();
+    input
+        .send_buttons(&[ButtonAction::Press, ButtonAction::Release])
+        .unwrap();
+    assert!(
+        net.wait_for(Duration::from_secs(2), |_| button_events(&net).len() >= 2),
+        "signed clicks must pass the picker"
+    );
+    // A press on one of this application's windows passes through too.
+    net.clear();
+    assert_eq!(click_unmarked_button(own_center, false), 2);
+    assert!(
+        net.wait_for(Duration::from_secs(2), |_| button_events(&net).len() >= 2),
+        "a click on an own window must pass the picker"
+    );
+    assert!(rx.try_recv().is_err(), "nothing picked yet");
+
+    // The next user click elsewhere is the pick; press and release are
+    // swallowed by the picker.
+    net.clear();
+    assert_eq!(click_unmarked_button(spot, false), 2);
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(2)),
+        Ok(PickOutcome::Picked(spot))
+    );
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(
+        button_events(&net),
+        vec![],
+        "pick click must not get through"
+    );
+    // Having swallowed the release, the picker removes its hook by itself.
+    assert_eq!(click_unmarked_button(spot, false), 2);
+    assert!(
+        net.wait_for(Duration::from_secs(2), |_| button_events(&net).len() >= 2),
+        "the hook must be gone after the pick"
+    );
+    drop(picker);
+
+    // A secondary click cancels, and is swallowed as well.
+    let (tx, rx) = mpsc::channel();
+    let picker = PointPicker::start(move |o| {
+        let _ = tx.send(o);
+    })
+    .expect("picker");
+    net.clear();
+    assert_eq!(click_unmarked_button(spot, true), 2);
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(2)),
+        Ok(PickOutcome::Cancelled)
+    );
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(
+        button_events(&net),
+        vec![],
+        "cancel click must not get through"
+    );
+    drop(picker);
+
+    // Dropping an undecided picker removes the hook without a callback.
+    let (tx, rx) = mpsc::channel();
+    let picker = PointPicker::start(move |o| {
+        let _ = tx.send(o);
+    })
+    .expect("picker");
+    drop(picker);
+    net.clear();
+    assert_eq!(click_unmarked_button(spot, false), 2);
+    assert!(net.wait_for(Duration::from_secs(2), |_| button_events(&net).len() >= 2));
+    assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
+    assert!(
+        own.messages().is_empty(),
+        "the test window received nothing"
+    );
+}

@@ -4,7 +4,8 @@
 //! the UI through `Weak::upgrade_in_event_loop` (at most one wake-up is ever
 //! queued, thanks to the status slot), and the exit hotkey does the same.
 //! Tray menu callbacks run on the UI thread too, and the system-events thread
-//! (second instance, session end) also goes through the event loop, so all
+//! (second instance, session end) also goes through the event loop, as does
+//! the outcome of "Pick target" (from the picker's hook thread), so all
 //! actions are serialized with each other and with shutdown.
 //!
 //! Closing the window hides it to the notification area (if the tray icon
@@ -21,11 +22,12 @@ use crate::{config_store, logging};
 use autoclicker_core::backend::InputBackend;
 use autoclicker_core::config::{ClickConfig, Config, HotkeyAction, TargetMode};
 use autoclicker_core::engine::Command;
+use autoclicker_core::geometry::Point;
 use autoclicker_core::keys::{Hotkey, Modifiers};
 use autoclicker_core::status::{RunState, Snapshot};
 use autoclicker_platform::{
-    Acquire, SystemEvents, WindowsInput, acquire_instance, activate_own_window,
-    enable_per_monitor_dpi_awareness,
+    Acquire, PickOutcome, PointPicker, SystemEvents, WindowsInput, acquire_instance,
+    activate_own_window, enable_per_monitor_dpi_awareness,
 };
 use log::{error, info, warn};
 use slint::{CloseRequestResponse, ComponentHandle, ModelRc, SharedString, Timer, VecModel};
@@ -36,8 +38,6 @@ use std::rc::{Rc, Weak};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
-/// Seconds counted down before "Pick target" reads the cursor position.
-pub const PICK_COUNTDOWN_SECONDS: i32 = 3;
 const NOTICE_DURATION: Duration = Duration::from_secs(6);
 /// Single-instance lock name; `AUTOCLICKER_INSTANCE` overrides it (tests).
 pub const INSTANCE_ENV: &str = "AUTOCLICKER_INSTANCE";
@@ -81,8 +81,11 @@ struct Controller {
     config: RefCell<Config>,
     path: Option<PathBuf>,
     snapshot: RefCell<Snapshot>,
-    pick_timer: Timer,
-    pick_remaining: Cell<i32>,
+    /// The mouse hook of "Pick target". It may outlive the pick briefly, to
+    /// swallow the release of the deciding click.
+    picker: RefCell<Option<PointPicker>>,
+    /// Where the current pick's outcome arrives; `Some` while picking.
+    pick_slot: RefCell<Option<PickSlot>>,
     notice_timer: Timer,
     capturing: Cell<Option<HotkeyAction>>,
     /// How the interval is shown (display only; never saved).
@@ -97,6 +100,9 @@ struct Controller {
     log_dir: Option<PathBuf>,
     shutdown_signal: ShutdownSignal,
 }
+
+/// Receives the outcome of one pick from the picker thread.
+type PickSlot = Arc<Mutex<Option<PickOutcome>>>;
 
 fn capitalize(s: &str) -> String {
     let mut c = s.chars();
@@ -207,8 +213,8 @@ impl App {
             config: RefCell::new(config),
             path: options.config_path,
             snapshot: RefCell::new(snapshot),
-            pick_timer: Timer::default(),
-            pick_remaining: Cell::new(0),
+            picker: RefCell::new(None),
+            pick_slot: RefCell::new(None),
             notice_timer: Timer::default(),
             capturing: Cell::new(None),
             interval_unit: Cell::new(IntervalUnit::Millis),
@@ -245,10 +251,9 @@ impl App {
         self.ctrl.runtime.borrow().hotkeys_active()
     }
 
-    /// Reads the cursor into the target immediately (what the countdown of
-    /// "Pick target" ends with).
-    pub fn capture_target_now(&self) {
-        self.ctrl.finish_pick();
+    /// Whether "Pick target" is waiting for a click.
+    pub fn picking(&self) -> bool {
+        self.ctrl.pick_slot.borrow().is_some()
     }
 
     /// Runs the shutdown path used by closing the window.
@@ -332,6 +337,7 @@ impl Controller {
         on!(on_start_stop_clicked, |c| c.start_stop());
         on!(on_mode_selected, |c, fixed: bool| c.select_mode(fixed));
         on!(on_pick_target_clicked, |c| c.pick_target());
+        on!(on_pick_decided, |c| c.pick_decided());
         on!(on_settings_edited, |c| c.settings_edited());
         on!(on_settings_commit, |c| c.settings_commit());
         on!(on_interval_unit_clicked, |c| c.toggle_interval_unit());
@@ -643,40 +649,91 @@ impl Controller {
 
     // ---------------------------------------------------------------- target
 
-    fn pick_target(self: &Rc<Self>) {
+    /// "Pick target": the next primary click anywhere on the screen (outside
+    /// this window) sets the fixed position; a secondary click, or the button
+    /// again (then labelled Cancel), cancels. There is no timeout. The
+    /// deciding click is swallowed, and the engine's own clicks are ignored
+    /// (see [`PointPicker`]).
+    fn pick_target(&self) {
         self.commit_pending_edits();
-        if self.pick_remaining.get() > 0 {
+        if self.pick_slot.borrow().is_some() {
             self.cancel_pick();
+            self.show_notice("Pick cancelled; the position is unchanged.".into());
             return;
         }
-        self.pick_remaining.set(PICK_COUNTDOWN_SECONDS);
-        self.with_ui(|ui| ui.set_pick_countdown(PICK_COUNTDOWN_SECONDS));
-        let weak = Rc::downgrade(self);
-        self.pick_timer.start(
-            slint::TimerMode::Repeated,
-            Duration::from_secs(1),
-            move || {
-                let Some(c) = weak.upgrade() else { return };
-                let left = c.pick_remaining.get() - 1;
-                if left <= 0 {
-                    c.finish_pick();
-                } else {
-                    c.pick_remaining.set(left);
-                    c.with_ui(|ui| ui.set_pick_countdown(left));
-                }
-            },
-        );
+        if self.config.borrow().click.mode != TargetMode::Fixed {
+            return;
+        }
+        // A previous picker that is still swallowing a release ends here.
+        self.picker.borrow_mut().take();
+        let slot: PickSlot = Arc::new(Mutex::new(None));
+        let started = {
+            let slot = slot.clone();
+            let weak = self.ui.clone();
+            PointPicker::start(move |outcome| {
+                *slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(outcome);
+                let _ = weak.upgrade_in_event_loop(|ui| ui.invoke_pick_decided());
+            })
+        };
+        match started {
+            Ok(picker) => {
+                *self.picker.borrow_mut() = Some(picker);
+                *self.pick_slot.borrow_mut() = Some(slot);
+                self.with_ui(|ui| ui.set_picking(true));
+            }
+            Err(e) => {
+                warn!("could not start picking a position: {e}");
+                self.show_notice(format!("Could not start picking a position ({e})."));
+            }
+        }
     }
 
-    fn finish_pick(&self) {
-        self.cancel_pick();
-        self.send(Command::SetTargetFromCursor);
+    /// The picker's outcome arrived (on the UI thread). An outcome of a pick
+    /// that was cancelled in the meantime finds no slot and is ignored.
+    fn pick_decided(&self) {
+        let outcome = {
+            let current = self.pick_slot.borrow();
+            match current.as_ref() {
+                Some(slot) => slot.lock().unwrap_or_else(PoisonError::into_inner).take(),
+                None => None,
+            }
+        };
+        let Some(outcome) = outcome else { return };
+        // The picker removes its hook by itself once the release is swallowed.
+        self.pick_slot.borrow_mut().take();
+        self.with_ui(|ui| ui.set_picking(false));
+        match outcome {
+            PickOutcome::Picked(p) => self.set_picked_target(p),
+            PickOutcome::Cancelled => {
+                self.show_notice("Pick cancelled; the position is unchanged.".into());
+            }
+        }
     }
 
+    fn set_picked_target(&self, p: Point) {
+        self.send(Command::SetTarget(p));
+        // Show and save it at once; the engine's status update confirms it.
+        self.snapshot.borrow_mut().target = Some(p);
+        let changed = {
+            let mut config = self.config.borrow_mut();
+            let changed = config.click.target != Some(p);
+            config.click.target = Some(p);
+            changed
+        };
+        if changed {
+            self.save();
+        }
+        info!("target set to {p}");
+        self.show_notice(format!("Target set to {p}"));
+        self.with_ui(|ui| self.render_status(ui));
+    }
+
+    /// Ends a pick in progress (and removes its hook) without changing the
+    /// position.
     fn cancel_pick(&self) {
-        self.pick_timer.stop();
-        self.pick_remaining.set(0);
-        self.with_ui(|ui| ui.set_pick_countdown(0));
+        self.pick_slot.borrow_mut().take();
+        self.picker.borrow_mut().take();
+        self.with_ui(|ui| ui.set_picking(false));
     }
 
     // ---------------------------------------------------------------- hotkeys
