@@ -1,0 +1,20 @@
+[package]
+name = "autoclicker"
+description = "Desktop autoclicker application."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+autoclicker-core.workspace = true
+autoclicker-platform.workspace = true
+directories.workspace = true
+serde.workspace = true
+slint.workspace = true
+toml.workspace = true
+
+[lints]
+workspace = true

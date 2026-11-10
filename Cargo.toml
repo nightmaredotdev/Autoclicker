@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/platform", "crates/app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Oldest toolchain this workspace has actually been built with (Slint 1.18 itself needs >= 1.92).
+rust-version = "1.97"
+license = "MIT"
+repository = "https://github.com/nightmaredotdev/autoclicker"
+publish = false
+
+[workspace.dependencies]
+autoclicker-core = { path = "crates/core" }
+autoclicker-platform = { path = "crates/platform" }
+
+fastrand = "2.5"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+toml = "1.2"
+directories = "6.0"
+
+# Software renderer only: default features are disabled so femtovg (OpenGL) is not compiled.
+# CI verifies that no femtovg/Skia/Qt renderer crates end up in the dependency graph.
+slint = { version = "=1.18.1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-software",
+    "accessibility",
+    "system-tray",
+] }
+
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[workspace.lints.rust]
+# `deny` (not `forbid`) so the platform crate can allow it for its Windows module only.
+# `core` and `app` additionally declare `#![forbid(unsafe_code)]`.
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+dbg_macro = "warn"
+todo = "warn"
+
+[profile.release]
+# Unwinding is required so the engine's button-release guard runs on panic.
+panic = "unwind"

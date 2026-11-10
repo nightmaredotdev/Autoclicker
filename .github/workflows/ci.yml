@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows (full workspace)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Release build
+        run: cargo build --workspace --release --locked
+
+      - name: Verify Slint renderer selection
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in x86_64-pc-windows-msvc x86_64-unknown-linux-gnu; do
+            tree=$(cargo tree --locked --target "$target" -e normal --prefix none)
+            if ! grep -q '^i-slint-renderer-software ' <<<"$tree"; then
+              echo "::error::Slint software renderer missing for $target"
+              exit 1
+            fi
+            if grep -E '^(i-slint-renderer-(femtovg|skia)|i-slint-backend-qt) ' <<<"$tree"; then
+              echo "::error::Unexpected Slint renderer/backend for $target"
+              exit 1
+            fi
+            echo "$target: only the software renderer is selected"
+          done
+
+  ubuntu:
+    name: Ubuntu (portable crates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # Linux is not a supported target yet: only the OS-independent core and
+      # the (currently empty on Linux) platform crate are checked here.
+      - name: Clippy (core, platform)
+        run: cargo clippy -p autoclicker-core -p autoclicker-platform --all-targets --locked -- -D warnings
+      - name: Test (core)
+        run: cargo test -p autoclicker-core --locked
