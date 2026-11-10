@@ -23,10 +23,11 @@ other than 100 %, mixed-DPI setups, battery power, exclusive-fullscreen
 | Suite | Command | Result |
 |---|---|---|
 | Core (deterministic, virtual time) | `cargo test -p autoclicker-core` | 54 passed (Windows and Linux) |
-| Platform unit tests (no desktop needed) | `cargo test -p autoclicker-platform` | 11 passed |
+| Platform unit tests (no desktop needed) | `cargo test -p autoclicker-platform` | 16 passed |
 | App unit tests | `cargo test -p autoclicker` | 1 passed |
 | Platform integration (real desktop) | `cargo test -p autoclicker-platform -- --ignored --test-threads=1` | 10 passed |
 | App runtime integration (real desktop) | `cargo test -p autoclicker -- --ignored --test-threads=1` | 4 passed |
+| Console control end to end (real exe, real desktop) | `cargo test -p autoclicker --test console_control -- --ignored --test-threads=1` | 2 passed (plus a helper entry), 3 consecutive runs |
 
 The integration tests are `#[ignore]`d by default because they need an
 interactive, unlocked desktop. They were run locally; CI runs only the
@@ -52,6 +53,9 @@ only while a test window has the foreground.
 | Fixed-target clicks stay within the 3 px jitter radius | `fixed_target_clicks_land_within_the_jitter_radius` |
 | Runtime shutdown joins the engine and hotkey threads, frees all hotkeys, is idempotent; dropping the runtime does the same | `shutdown_joins_both_threads_and_frees_hotkeys`, `dropping_the_runtime_also_shuts_down` |
 | Runtime shutdown while holding releases the button | `shutdown_while_holding_releases_the_button` |
+| Console handler dispatch: Ctrl+C/Ctrl+Break request exit without blocking; close/logoff/shutdown request exit and wait until shutdown completes (bounded by the 4 s grace period); unknown events are passed on | `windows::console::tests` (5 unit tests, run in CI) |
+| A real `CTRL_C_EVENT` (`GenerateConsoleCtrlEvent` on the app's own console) while clicking: engine stopped, no button left held, both threads joined cleanly, exit code 0 | `ctrl_c_while_clicking_shuts_down_cleanly` |
+| A real `CTRL_CLOSE_EVENT`, produced by posting `WM_CLOSE` to the app's classic console-host window while clicking: same checks; Windows then ends the process with `STATUS_CONTROL_C_EXIT` (0xC000013A) once the handler returns | `closing_the_console_window_while_clicking_shuts_down_cleanly` |
 | The exit hotkey leads to a clean shutdown | `exit_hotkey_leads_to_a_clean_shutdown`, plus a manual run of the release exe (Ctrl+Shift+F8 sent with `SendKeys`; process exited with code 0) |
 
 Covered by deterministic core tests only (a real `SendInput` partial failure
@@ -125,12 +129,30 @@ be created (Windows 10 before 1803), and for comparison (`--waiter plain`).
 (the documented resolution caveat applies there), behaviour under battery or
 power-saving modes, and timing behind exclusive-fullscreen games.
 
-## Manual checks still outstanding
+## Console shutdown: what is and is not verified
 
-* **Ctrl+C / closing the console window:** the handler is implemented, but
-  it was not exercised. Sending SIGINT from WSL terminates the Windows process
-  without raising a console control event. To check: run
-  `target\release\autoclicker.exe` in a Windows terminal, press Ctrl+C, and
-  confirm it prints `Exiting: console closed or Ctrl+C.`
+Verified automatically (see above): the real executable, started in its own
+console with clicking active, receives a real `CTRL_C_EVENT`, or a real
+`CTRL_CLOSE_EVENT` produced by closing its console window with `WM_CLOSE`. In
+both cases it stops the engine, leaves no button held, unregisters its
+hotkeys and joins both threads ("Shutdown complete: engine thread Clean,
+hotkey thread Clean"), and injects nothing after exiting.
+
+Not verified:
+
+* **Closing the window by hand** (the X button sends `WM_SYSCOMMAND`/`SC_CLOSE`,
+  which the console host turns into the same close handling). The tests post
+  `WM_CLOSE` directly.
+* **Windows Terminal** (the default terminal on Windows 11): closing a tab or
+  window there. The tests used the classic console host on Windows 10.
+* **Console output while the console is being destroyed.** The tests pipe the
+  application's output, so writes never touch the closing console. The
+  application now shuts down *before* writing anything and no longer panics on
+  write errors, but writes to a dying console were not observed.
+* **Logoff and system shutdown events.** These go through the same code path
+  as close (covered by the unit tests) but were not delivered for real.
+* **A thread that hangs during a close event.** Each join waits up to 2 s
+  (4 s in total), and the close handler waits up to 4 s before Windows
+  terminates the process. In that case the release may not complete.
 * **Clicking a real application** with the default settings (the automated
   tests deliberately never do).

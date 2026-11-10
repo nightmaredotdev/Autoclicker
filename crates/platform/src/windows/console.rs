@@ -49,20 +49,130 @@ unsafe extern "system" fn handler(ctrl_type: u32) -> BOOL {
     let Some(on_exit) = ON_EXIT.get() else {
         return 0;
     };
+    dispatch(ctrl_type, on_exit.as_ref(), &SHUTDOWN_DONE, CLOSE_GRACE)
+}
+
+/// Handles one console control event. Returns TRUE if handled.
+///
+/// * Ctrl+C / Ctrl+Break: request the exit and return immediately; the process
+///   keeps running and the main thread performs the normal shutdown.
+/// * Close / logoff / shutdown: Windows terminates the process as soon as the
+///   handler returns, so request the exit and wait (at most `grace`) until the
+///   application reports that shutdown is complete.
+fn dispatch(
+    ctrl_type: u32,
+    on_exit: &(dyn Fn() + Send + Sync),
+    done: &(Mutex<bool>, Condvar),
+    grace: Duration,
+) -> BOOL {
     match ctrl_type {
         CTRL_C_EVENT | CTRL_BREAK_EVENT => {
             on_exit();
             1
         }
         CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
-            // The process is terminated as soon as this returns, so wait for
-            // the normal shutdown (release, unregister, join) to complete.
             on_exit();
-            let (done, cond) = &SHUTDOWN_DONE;
-            let guard = done.lock().unwrap_or_else(PoisonError::into_inner);
-            let _ = cond.wait_timeout_while(guard, CLOSE_GRACE, |done| !*done);
+            let (flag, cond) = done;
+            let guard = flag.lock().unwrap_or_else(PoisonError::into_inner);
+            let _ = cond.wait_timeout_while(guard, grace, |done| !*done);
             1
         }
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Instant;
+
+    fn counter() -> (Arc<AtomicUsize>, impl Fn() + Send + Sync) {
+        let n = Arc::new(AtomicUsize::new(0));
+        let c = n.clone();
+        (n, move || {
+            c.fetch_add(1, Ordering::SeqCst);
+        })
+    }
+
+    fn new_done() -> Arc<(Mutex<bool>, Condvar)> {
+        Arc::new((Mutex::new(false), Condvar::new()))
+    }
+
+    #[test]
+    fn ctrl_c_and_break_request_exit_without_blocking() {
+        for event in [CTRL_C_EVENT, CTRL_BREAK_EVENT] {
+            let (calls, on_exit) = counter();
+            let done = new_done();
+            let start = Instant::now();
+            assert_eq!(dispatch(event, &on_exit, &done, Duration::from_secs(10)), 1);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert!(
+                start.elapsed() < Duration::from_millis(100),
+                "must not wait"
+            );
+        }
+    }
+
+    #[test]
+    fn close_waits_until_shutdown_is_reported_complete() {
+        for event in [CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT] {
+            let (calls, on_exit) = counter();
+            let done = new_done();
+            let signaller = {
+                let done = done.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(Duration::from_millis(80));
+                    *done.0.lock().unwrap() = true;
+                    done.1.notify_all();
+                })
+            };
+            let start = Instant::now();
+            assert_eq!(dispatch(event, &on_exit, &done, Duration::from_secs(10)), 1);
+            let waited = start.elapsed();
+            signaller.join().unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            assert!(
+                waited >= Duration::from_millis(70),
+                "returned early: {waited:?}"
+            );
+            assert!(waited < Duration::from_secs(2), "did not wake: {waited:?}");
+        }
+    }
+
+    #[test]
+    fn close_returns_after_the_grace_period_if_shutdown_hangs() {
+        let (_, on_exit) = counter();
+        let done = new_done();
+        let start = Instant::now();
+        assert_eq!(
+            dispatch(
+                CTRL_CLOSE_EVENT,
+                &on_exit,
+                &done,
+                Duration::from_millis(100)
+            ),
+            1
+        );
+        let waited = start.elapsed();
+        assert!(waited >= Duration::from_millis(90) && waited < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn close_after_completion_returns_immediately() {
+        let (_, on_exit) = counter();
+        let done = new_done();
+        *done.0.lock().unwrap() = true;
+        let start = Instant::now();
+        dispatch(CTRL_CLOSE_EVENT, &on_exit, &done, Duration::from_secs(10));
+        assert!(start.elapsed() < Duration::from_millis(100));
+    }
+
+    #[test]
+    fn unknown_events_are_passed_on() {
+        let (calls, on_exit) = counter();
+        assert_eq!(dispatch(99, &on_exit, &new_done(), Duration::ZERO), 0);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 }

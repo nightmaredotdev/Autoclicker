@@ -555,6 +555,69 @@ pub fn send_physical_button(left: bool, down: bool) -> usize {
     unsafe { SendInput(1, &input, size_of::<INPUT>() as i32) as usize }
 }
 
+// ---------------------------------------------------------------- console control
+
+/// Sends a real `CTRL_C_EVENT` to every process attached to the console of
+/// `pid`. **Detaches the calling process from its own console**, so only call
+/// this from a dedicated helper process whose output is not a console.
+pub fn send_ctrl_c_to_console_of(pid: u32) -> Result<(), Win32Error> {
+    use windows_sys::Win32::System::Console::{
+        AttachConsole, CTRL_C_EVENT, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler,
+    };
+    // SAFETY: no arguments; failing just means there was no console.
+    unsafe { FreeConsole() };
+    // SAFETY: no pointer arguments.
+    if unsafe { AttachConsole(pid) } == 0 {
+        return Err(Win32Error::last());
+    }
+    // This process is now attached too: make it ignore the Ctrl+C it sends.
+    // SAFETY: a null handler with TRUE sets the "ignore Ctrl+C" attribute.
+    unsafe { SetConsoleCtrlHandler(None, 1) };
+    // SAFETY: no pointer arguments; group 0 = all processes on this console.
+    let sent = unsafe { GenerateConsoleCtrlEvent(CTRL_C_EVENT, 0) };
+    let result = if sent == 0 {
+        Err(Win32Error::last())
+    } else {
+        Ok(())
+    };
+    std::thread::sleep(Duration::from_millis(200)); // let delivery finish
+    // SAFETY: no arguments.
+    unsafe { FreeConsole() };
+    result
+}
+
+/// Asks the console window of `pid` to close by posting `WM_CLOSE` to it,
+/// which makes the console host send `CTRL_CLOSE_EVENT` to attached
+/// processes. **Detaches the calling process from its own console**, so only
+/// call this from a dedicated helper process. Returns an error if the console
+/// has no window (e.g. a pseudo-console).
+pub fn close_console_window_of(pid: u32) -> Result<(), Win32Error> {
+    use windows_sys::Win32::System::Console::{AttachConsole, FreeConsole, GetConsoleWindow};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
+    // SAFETY: no arguments; failing just means there was no console.
+    unsafe { FreeConsole() };
+    // SAFETY: no pointer arguments.
+    if unsafe { AttachConsole(pid) } == 0 {
+        return Err(Win32Error::last());
+    }
+    // SAFETY: no arguments.
+    let hwnd = unsafe { GetConsoleWindow() };
+    // Detach before closing so this process does not receive the event.
+    // SAFETY: no arguments.
+    unsafe { FreeConsole() };
+    if hwnd.is_null() {
+        return Err(Win32Error {
+            code: 0,
+            message: "the target console has no window".into(),
+        });
+    }
+    // SAFETY: the handle came from GetConsoleWindow; PostMessageW validates it.
+    if unsafe { PostMessageW(hwnd, WM_CLOSE, 0, 0) } == 0 {
+        return Err(Win32Error::last());
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------- system state
 
 /// Temporarily sets the swapped-mouse-buttons setting; restores it on drop

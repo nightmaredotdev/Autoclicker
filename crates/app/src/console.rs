@@ -6,6 +6,7 @@ use autoclicker_core::status::{RunState, Snapshot, StatusUpdate};
 use autoclicker_platform::{
     console_shutdown_complete, enable_per_monitor_dpi_awareness, install_console_exit_handler,
 };
+use std::io::Write;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
@@ -114,32 +115,58 @@ pub fn run(args: Vec<String>) -> ExitCode {
             AppEvent::Exit(reason) => break reason,
         }
     };
-    println!("Exiting: {reason}.");
+    // Shut down before writing anything: console output can block (e.g. while
+    // text is selected) or fail while the console is being closed, and neither
+    // may delay stopping the engine and releasing the button.
     let report = runtime.shutdown();
-    printer.print(runtime.take_status());
-    let code = match report {
-        Some(r) if r.is_clean() => ExitCode::SUCCESS,
+    let final_status = runtime.take_status();
+    console_shutdown_complete();
+
+    // From here on output is best effort and must not panic.
+    let mut out = std::io::stdout().lock();
+    let _ = writeln!(out, "Exiting: {reason}.");
+    let s = &final_status.snapshot;
+    if let Some(fault) = &s.fault {
+        let _ = writeln!(out, "ERROR: {fault}");
+    }
+    let _ = writeln!(
+        out,
+        "Total clicks: {}. Mouse button held: {}.",
+        s.total_clicks,
+        if s.button_held {
+            "possibly (see error)"
+        } else {
+            "no"
+        }
+    );
+    match report {
         Some(r) => {
-            eprintln!("warning: shutdown was not clean: {r:?}");
-            ExitCode::FAILURE
+            let _ = writeln!(
+                out,
+                "Shutdown complete: engine thread {:?}, hotkey thread {:?}.",
+                r.engine, r.hotkeys
+            );
+            if r.is_clean() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
         }
         None => ExitCode::SUCCESS,
-    };
-    console_shutdown_complete();
-    code
+    }
 }
 
 fn print_banner(config: &ValidatedConfig, runtime: &Runtime) {
     let c = &config.click;
     println!("Autoclicker {} (headless)", env!("CARGO_PKG_VERSION"));
     println!(
-        "  mode: {} | interval: {} ms ± {} ms (σ) | hold: {} ms | position jitter: {} px",
+        "  mode: {} | interval: {} ms ± {} ms (σ) | hold: {} ms | position jitter: {}",
         c.mode(),
         c.interval().as_millis(),
         c.jitter_sigma_ms(),
         c.hold().as_millis(),
         if c.mode() == TargetMode::Fixed {
-            c.radius_px().to_string()
+            format!("{} px", c.radius_px())
         } else {
             "off".into()
         }
