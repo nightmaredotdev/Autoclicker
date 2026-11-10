@@ -272,6 +272,8 @@ export component MainWindow inherits Window {
     in property <bool> settings-pending;
     in property <[HotkeyRow]> hotkeys;
     in-out property <int> current-tab: 0;
+    /// Whether the tab bar has keyboard focus (read by the GUI tests).
+    out property <bool> tab-bar-focused: tab-bar.has-focus;
     in-out property <int> capturing-index: -1;
     in property <string> hotkeys-error;
     in-out property <bool> keep-on-top;
@@ -414,41 +416,78 @@ export component MainWindow inherits Window {
         // Tab bar with centred labels (the standard TabWidget left-aligns
         // them). Clicking a tab moves the focus off an edited field first, so
         // the field commits as before.
-        VerticalLayout {
-            spacing: 0px;
-            HorizontalLayout {
-                for title[index] in ["Settings", "Hotkeys"]: Rectangle {
-                    horizontal-stretch: 1;
-                    height: 36px;
-                    border-radius: 4px;
-                    background: tab-area.has-hover && root.current-tab != index
-                        ? Palette.alternate-background.transparentize(40%) : transparent;
-                    tab-area := TouchArea {
-                        clicked => {
-                            root.release-field-focus();
-                            root.current-tab = index;
+        //
+        // Keyboard: the bar is a single Tab stop (like a standard tab list);
+        // Left/Right switch between the two tabs, Home/End go to the first or
+        // last one. A focus ring marks the active tab while the bar has
+        // keyboard focus. Reaching the bar with Tab moves the focus off an
+        // edited field, which commits it. Mouse clicks do not focus the bar.
+        tab-bar := FocusScope {
+            focus-on-click: false;
+            accessible-role: tab-list;
+            accessible-item-count: 2;
+            key-pressed(event) => {
+                if event.modifiers.control || event.modifiers.alt || event.modifiers.meta {
+                    return reject;
+                }
+                if event.text == Key.LeftArrow || event.text == Key.RightArrow {
+                    root.current-tab = root.current-tab == 0 ? 1 : 0;
+                    return accept;
+                }
+                if event.text == Key.Home {
+                    root.current-tab = 0;
+                    return accept;
+                }
+                if event.text == Key.End {
+                    root.current-tab = 1;
+                    return accept;
+                }
+                reject
+            }
+            VerticalLayout {
+                spacing: 0px;
+                HorizontalLayout {
+                    for title[index] in ["Settings", "Hotkeys"]: Rectangle {
+                        horizontal-stretch: 1;
+                        height: 36px;
+                        border-radius: 4px;
+                        accessible-role: tab;
+                        accessible-label: title;
+                        accessible-item-index: index;
+                        accessible-item-selectable: true;
+                        accessible-item-selected: root.current-tab == index;
+                        background: tab-area.has-hover && root.current-tab != index
+                            ? Palette.alternate-background.transparentize(40%) : transparent;
+                        // Keyboard focus ring on the active tab.
+                        border-width: tab-bar.has-focus && root.current-tab == index ? 2px : 0px;
+                        border-color: Palette.foreground;
+                        tab-area := TouchArea {
+                            clicked => {
+                                root.release-field-focus();
+                                root.current-tab = index;
+                            }
+                        }
+                        Text {
+                            text: title;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            font-weight: root.current-tab == index ? 600 : 400;
+                            color: root.current-tab == index ? Palette.foreground : Theme.muted;
+                        }
+                        if root.current-tab == index: Rectangle {
+                            y: parent.height - 3px;
+                            x: (parent.width - 32px) / 2;
+                            width: 32px;
+                            height: 3px;
+                            border-radius: 1.5px;
+                            background: Palette.accent-background;
                         }
                     }
-                    Text {
-                        text: title;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                        font-weight: root.current-tab == index ? 600 : 400;
-                        color: root.current-tab == index ? Palette.foreground : Theme.muted;
-                    }
-                    if root.current-tab == index: Rectangle {
-                        y: parent.height - 3px;
-                        x: (parent.width - 32px) / 2;
-                        width: 32px;
-                        height: 3px;
-                        border-radius: 1.5px;
-                        background: Palette.accent-background;
-                    }
                 }
-            }
-            Rectangle {
-                height: 1px;
-                background: Palette.border.transparentize(40%);
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border.transparentize(40%);
+                }
             }
         }
 

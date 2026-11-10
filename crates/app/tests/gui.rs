@@ -46,6 +46,11 @@ mod imp {
     const VK_ESCAPE: u16 = 0x1B;
     const VK_A: u16 = 0x41;
     const VK_RETURN: u16 = 0x0D;
+    const VK_TAB: u16 = 0x09;
+    const VK_END: u16 = 0x23;
+    const VK_HOME: u16 = 0x24;
+    const VK_LEFT: u16 = 0x25;
+    const VK_RIGHT: u16 = 0x27;
     const VK_0: u16 = 0x30;
     const VK_1: u16 = 0x31;
     const VK_5: u16 = 0x35;
@@ -515,6 +520,87 @@ mod imp {
         );
         ui.set_current_tab(0);
         pump(Duration::from_millis(100));
+
+        step("keyboard: the tab bar is one Tab stop and arrow keys switch tabs");
+        focus(gui);
+        ui.invoke_release_field_focus();
+        pump(Duration::from_millis(100));
+        let mut presses = 0;
+        while !ui.get_tab_bar_focused() {
+            assert!(presses < 6, "Tab never reached the tab bar");
+            press(gui, &tap(VK_TAB));
+            pump(Duration::from_millis(80));
+            presses += 1;
+        }
+        assert_eq!(ui.get_current_tab(), 0);
+        press(gui, &tap(VK_RIGHT));
+        pump_until("Right selects Hotkeys", Duration::from_secs(2), || {
+            ui.get_current_tab() == 1
+        });
+        press(gui, &tap(VK_LEFT));
+        pump_until("Left selects Settings", Duration::from_secs(2), || {
+            ui.get_current_tab() == 0
+        });
+        press(gui, &tap(VK_END));
+        pump_until("End selects the last tab", Duration::from_secs(2), || {
+            ui.get_current_tab() == 1
+        });
+        press(gui, &tap(VK_HOME));
+        pump_until("Home selects the first tab", Duration::from_secs(2), || {
+            ui.get_current_tab() == 0
+        });
+        assert!(
+            ui.get_tab_bar_focused(),
+            "arrow keys keep the focus on the tab bar"
+        );
+        press(
+            gui,
+            &[
+                (VK_SHIFT, false),
+                (VK_TAB, false),
+                (VK_TAB, true),
+                (VK_SHIFT, true),
+            ],
+        );
+        pump_until(
+            "Shift+Tab leaves the tab bar",
+            Duration::from_secs(2),
+            || !ui.get_tab_bar_focused(),
+        );
+
+        step("keyboard: moving focus to the tab bar commits an edit, then arrows switch");
+        type_interval(&[VK_1, VK_5, VK_5]);
+        pump_until("typed", Duration::from_secs(2), || {
+            ui.get_interval_text() == "155"
+        });
+        let mut presses = 0;
+        while !ui.get_tab_bar_focused() {
+            assert!(presses < 8, "Shift+Tab never reached the tab bar");
+            press(
+                gui,
+                &[
+                    (VK_SHIFT, false),
+                    (VK_TAB, false),
+                    (VK_TAB, true),
+                    (VK_SHIFT, true),
+                ],
+            );
+            pump(Duration::from_millis(80));
+            presses += 1;
+        }
+        pump_until(
+            "committed when the field lost focus",
+            Duration::from_secs(2),
+            || app.config().click.interval_ms == 155,
+        );
+        press(gui, &tap(VK_RIGHT));
+        pump_until("switched by keyboard", Duration::from_secs(2), || {
+            ui.get_current_tab() == 1
+        });
+        press(gui, &tap(VK_LEFT));
+        pump_until("back to Settings", Duration::from_secs(2), || {
+            ui.get_current_tab() == 0
+        });
 
         step("a button action commits a pending edit first");
         type_interval(&[VK_1, VK_6, VK_0]);
