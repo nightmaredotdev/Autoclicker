@@ -79,9 +79,12 @@ try {
     Add-Type -AssemblyName System.Drawing
     $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
     $bmp = $icon.ToBitmap()
+    # The blue tile, and the white cursor of the Cadence logo (assets/icon).
     $px = $bmp.GetPixel([int]($bmp.Width * 0.83), [int]($bmp.Height * 0.2))
     if (-not ($px.B -gt 180 -and $px.R -lt 100 -and $px.A -gt 200)) { Fail "embedded icon not found (pixel $px)" }
-    Ok "embedded application icon ($($bmp.Width)x$($bmp.Height), background $($px.R),$($px.G),$($px.B))"
+    $glyph = $bmp.GetPixel([int]($bmp.Width * 0.6875), [int]($bmp.Height * 0.5))
+    if (-not ($glyph.R -gt 230 -and $glyph.G -gt 230 -and $glyph.B -gt 230 -and $glyph.A -gt 200)) { Fail "embedded icon is not the Cadence logo (pixel $glyph)" }
+    Ok "embedded application icon ($($bmp.Width)x$($bmp.Height), background $($px.R),$($px.G),$($px.B), logo $($glyph.R),$($glyph.G),$($glyph.B))"
 
     $text = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
     foreach ($needle in @('level="asInvoker"', 'PerMonitorV2', "version=""$version.0""")) {

@@ -1,147 +1,152 @@
 #!/usr/bin/env python3
-"""Generates the Autoclicker icon assets from the geometry defined below.
+"""Generates the Cadence icon assets from cadence.svg.
 
-This script is the source of the artwork: a blue rounded square with a
-white mouse pointer and three short "click" strokes. The tray variant for
-the running state adds a green badge.
+cadence.svg is the canonical artwork and is never modified. This script
+nests it, unchanged except for its colour (white instead of the SVG's
+default dark colour), on a blue rounded-square tile; the tray icon for the
+running state adds a green badge. Every size is rendered directly from the
+vector artwork by resvg, a development-time tool pinned to one version and
+checksum below.
 
 Outputs (written next to this script):
-    autoclicker.ico    multi-size Windows icon (16-256 px, PNG-compressed)
+    cadence.ico        multi-size Windows icon (16-256 px, PNG-compressed)
+    icon-256.png       256 px window icon
     tray-idle.png      32 px tray icon (stopped)
     tray-running.png   32 px tray icon (running, green badge)
-    icon-256.png       256 px preview
 
-Usage (Python 3.8+, standard library only):
-    python3 assets/icon/make_icon.py
+Requirements: Python 3.8+ (standard library only) and the official resvg
+0.49.0 executable, found through the RESVG environment variable or on PATH:
 
-The output is deterministic, so regenerating without changes reproduces
-identical files.
+    RESVG=C:\\tools\\resvg-0.49.0\\resvg.exe python assets/icon/make_icon.py
+
+The script refuses to run with any other resvg version or binary. The output
+is deterministic: running it again reproduces identical files.
 """
 
-import math
+import hashlib
 import os
+import shutil
 import struct
-import zlib
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
 
-SUPERSAMPLE = 8  # samples per pixel along each axis
+RESVG_VERSION = "0.49.0"
+# SHA-256 of the executables inside the official release archives
+# (https://github.com/linebender/resvg/releases/tag/v0.49.0). The archive
+# itself is checked against the digest published with the release; see
+# README.md.
+RESVG_EXECUTABLES = {
+    # resvg-win-x86_64.zip (sha256 38af9631b37e61118a32a5ef31e6be6af083eda63b4c17ffc4fdc63e449277df)
+    "266b45d69cd80aafbd7ff2b6424a6a6c2e476888a535a4ce38d5a055bed95624": "resvg-win-x86_64",
+}
 
-BACKGROUND = (37, 99, 235)      # blue
-BACKGROUND_EDGE = (29, 78, 186)  # darker rim for contrast on light taskbars
-FOREGROUND = (255, 255, 255)
-BADGE = (22, 163, 74)           # green: running
-BADGE_RIM = (255, 255, 255)
+SVG_NS = "http://www.w3.org/2000/svg"
+CANVAS = 256  # coordinate system of the tile; matches cadence.svg's viewBox
 
-# Geometry in a 0..1 unit square.
-CORNER = 0.22
-RIM = 0.035
-# Mouse pointer (classic arrow), tip at the upper left.
-ARROW = [
-    (0.34, 0.25),
-    (0.34, 0.78),
-    (0.455, 0.665),
-    (0.545, 0.85),
-    (0.625, 0.81),
-    (0.535, 0.625),
-    (0.70, 0.625),
-]
-# Three "click" strokes radiating from the arrow tip: (angle deg, from, to).
-RAYS = [(-90, 0.08, 0.15), (-135, 0.08, 0.15), (-180, 0.08, 0.15)]
-RAY_WIDTH = 0.05
-TIP = (0.34, 0.25)
+# Tile: blue rounded square with a darker rim for contrast on light taskbars.
+BACKGROUND = "#2563eb"
+BACKGROUND_EDGE = "#1d4eba"
+CORNER = 0.22 * CANVAS
+RIM = 0.035 * CANVAS
+GLYPH = "#ffffff"
+# Running badge: green dot with a white ring, lower right.
+BADGE = "#16a34a"
+BADGE_RIM = "#ffffff"
+BADGE_CENTER = 0.76 * CANVAS
+BADGE_RADIUS = 0.24 * CANVAS
+BADGE_INNER = 0.78  # green part, as a fraction of the badge radius
 
-
-def inside_rounded_square(x, y, inset=0.0):
-    r = CORNER - inset
-    lo, hi = inset, 1.0 - inset
-    if x < lo or x > hi or y < lo or y > hi:
-        return False
-    cx = min(max(x, lo + r), hi - r)
-    cy = min(max(y, lo + r), hi - r)
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 256]
+TRAY_SIZE = 32
 
 
-def inside_polygon(x, y, poly):
-    inside = False
-    n = len(poly)
-    for i in range(n):
-        x1, y1 = poly[i]
-        x2, y2 = poly[(i + 1) % n]
-        if (y1 > y) != (y2 > y):
-            xi = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
-            if x < xi:
-                inside = not inside
-    return inside
+def fail(message):
+    sys.exit(f"make_icon.py: {message}")
 
 
-def near_segment(x, y, a, b, half_width):
-    (ax, ay), (bx, by) = a, b
-    dx, dy = bx - ax, by - ay
-    t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
-    px, py = ax + t * dx, ay + t * dy
-    return (x - px) ** 2 + (y - py) ** 2 <= half_width * half_width
+def find_resvg():
+    """Path of the pinned resvg executable, or exits with an explanation."""
+    path = os.environ.get("RESVG") or shutil.which("resvg")
+    if not path or not os.path.isfile(path):
+        fail(
+            f"resvg {RESVG_VERSION} is required but was not found. Download the "
+            "official release (see assets/icon/README.md) and set RESVG to the "
+            "executable's path, or put it on PATH."
+        )
+    with open(path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    if digest not in RESVG_EXECUTABLES:
+        fail(
+            f"{path} is not the pinned resvg {RESVG_VERSION} executable "
+            f"(sha256 {digest}). Use the official release (see assets/icon/README.md)."
+        )
+    version = subprocess.run(
+        [path, "-V"], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    if version != RESVG_VERSION:
+        fail(f"{path} reports version {version!r}, expected {RESVG_VERSION}")
+    return path
 
 
-def ray_segments():
-    segs = []
-    for angle, r0, r1 in RAYS:
-        a = math.radians(angle)
-        ux, uy = math.cos(a), math.sin(a)
-        segs.append(((TIP[0] + ux * r0, TIP[1] + uy * r0), (TIP[0] + ux * r1, TIP[1] + uy * r1)))
-    return segs
+def tile_svg(glyph_path, badge):
+    """The icon as SVG source: tile, the unmodified glyph, optional badge."""
+    ET.register_namespace("", SVG_NS)
+    glyph = ET.parse(glyph_path).getroot()
+    if glyph.get("viewBox") != f"0 0 {CANVAS} {CANVAS}":
+        fail(f"{glyph_path}: expected viewBox '0 0 {CANVAS} {CANVAS}'")
+    # Only the colour (which every shape uses through currentColor) and the
+    # placement change; the geometry and all other attributes stay as drawn.
+    glyph.set("color", GLYPH)
+    glyph.set("x", "0")
+    glyph.set("y", "0")
+    glyph.set("width", str(CANVAS))
+    glyph.set("height", str(CANVAS))
 
+    root = ET.Element(
+        f"{{{SVG_NS}}}svg",
+        {"viewBox": f"0 0 {CANVAS} {CANVAS}", "width": str(CANVAS), "height": str(CANVAS)},
+    )
 
-def sample(x, y, badge):
-    """Colour (r, g, b, a) of the artwork at unit coordinates (x, y)."""
+    def rect(inset, fill):
+        size = CANVAS - 2 * inset
+        ET.SubElement(root, f"{{{SVG_NS}}}rect", {
+            "x": f"{inset:g}", "y": f"{inset:g}",
+            "width": f"{size:g}", "height": f"{size:g}",
+            "rx": f"{CORNER - inset:g}", "fill": fill,
+        })
+
+    def circle(radius, fill):
+        ET.SubElement(root, f"{{{SVG_NS}}}circle", {
+            "cx": f"{BADGE_CENTER:g}", "cy": f"{BADGE_CENTER:g}",
+            "r": f"{radius:g}", "fill": fill,
+        })
+
+    rect(0, BACKGROUND_EDGE)
+    rect(RIM, BACKGROUND)
+    root.append(glyph)
     if badge:
-        bx, by, br = 0.76, 0.76, 0.24
-        d2 = (x - bx) ** 2 + (y - by) ** 2
-        if d2 <= (br * 0.78) ** 2:
-            return BADGE + (255,)
-        if d2 <= br * br:
-            return BADGE_RIM + (255,)
-    if not inside_rounded_square(x, y):
-        return (0, 0, 0, 0)
-    if inside_polygon(x, y, ARROW):
-        return FOREGROUND + (255,)
-    for a, b in ray_segments():
-        if near_segment(x, y, a, b, RAY_WIDTH / 2):
-            return FOREGROUND + (255,)
-    if not inside_rounded_square(x, y, RIM):
-        return BACKGROUND_EDGE + (255,)
-    return BACKGROUND + (255,)
+        circle(BADGE_RADIUS, BADGE_RIM)
+        circle(BADGE_RADIUS * BADGE_INNER, BADGE)
+    return ET.tostring(root, encoding="utf-8")
 
 
-def render(size, badge=False):
-    """RGBA bytes of the icon at `size` x `size`, anti-aliased by supersampling."""
-    out = bytearray()
-    n = SUPERSAMPLE
-    for py in range(size):
-        for px in range(size):
-            r = g = b = a = 0
-            for sy in range(n):
-                for sx in range(n):
-                    x = (px + (sx + 0.5) / n) / size
-                    y = (py + (sy + 0.5) / n) / size
-                    cr, cg, cb, ca = sample(x, y, badge)
-                    r += cr * ca
-                    g += cg * ca
-                    b += cb * ca
-                    a += ca
-            if a:
-                out += bytes((round(r / a), round(g / a), round(b / a), round(a / (n * n))))
-            else:
-                out += b"\0\0\0\0"
-    return bytes(out)
-
-
-def png(size, rgba):
-    def chunk(kind, data):
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
-
-    rows = b"".join(b"\0" + rgba[y * size * 4:(y + 1) * size * 4] for y in range(size))
-    header = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
-            + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+def render(resvg, svg, size):
+    """PNG bytes of `svg` rendered at `size` x `size` pixels."""
+    result = subprocess.run(
+        [resvg, "-w", str(size), "-h", str(size), "-", "-c"],
+        input=svg, capture_output=True, check=False,
+    )
+    if result.returncode != 0:
+        fail(f"resvg failed: {result.stderr.decode(errors='replace').strip()}")
+    blob = result.stdout
+    # Windows accepts PNG icon entries only as 32-bit RGBA.
+    if blob[:8] != b"\x89PNG\r\n\x1a\n" or blob[12:16] != b"IHDR":
+        fail("resvg did not produce a PNG")
+    width, height, depth, colour = struct.unpack(">IIBB", blob[16:26])
+    if (width, height, depth, colour) != (size, size, 8, 6):
+        fail(f"unexpected PNG format {width}x{height}, depth {depth}, colour type {colour}")
+    return blob
 
 
 def ico(images):
@@ -160,18 +165,20 @@ def ico(images):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
+    resvg = find_resvg()
+    plain = tile_svg(os.path.join(here, "cadence.svg"), badge=False)
+    running = tile_svg(os.path.join(here, "cadence.svg"), badge=True)
 
     def write(name, blob):
         with open(os.path.join(here, name), "wb") as f:
             f.write(blob)
         print(f"wrote {name} ({len(blob)} bytes)")
 
-    sizes = [16, 20, 24, 32, 40, 48, 64, 256]
-    images = [(s, png(s, render(s))) for s in sizes]
-    write("autoclicker.ico", ico(images))
+    images = [(s, render(resvg, plain, s)) for s in ICO_SIZES]
+    write("cadence.ico", ico(images))
     write("icon-256.png", images[-1][1])
-    write("tray-idle.png", png(32, render(32)))
-    write("tray-running.png", png(32, render(32, badge=True)))
+    write("tray-idle.png", render(resvg, plain, TRAY_SIZE))
+    write("tray-running.png", render(resvg, running, TRAY_SIZE))
 
 
 if __name__ == "__main__":

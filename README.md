@@ -102,7 +102,7 @@ crates/
   core/      OS-independent logic: configuration, scheduling, click engine (no unsafe code)
   platform/  OS-specific input, hotkeys, timing and screen queries (the only crate with handwritten unsafe code)
   app/       Desktop application: Slint UI (ui/app.slint), settings file, wiring
-assets/icon/ Icon source (make_icon.py) and generated icons
+assets/icon/ Logo (cadence.svg), icon generator (make_icon.py) and generated icons
 packaging/   Files shipped in the release ZIP
 scripts/     Packaging and package verification
 docs/        Verification records, release process

@@ -6,7 +6,7 @@ fn main() {
     slint_build::compile_with_config("ui/app.slint", config).expect("compile the Slint UI");
 
     println!("cargo:rerun-if-changed=app.manifest");
-    println!("cargo:rerun-if-changed=../../assets/icon/autoclicker.ico");
+    println!("cargo:rerun-if-changed=../../assets/icon/cadence.ico");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         embed_windows_resources();
     }
@@ -23,7 +23,7 @@ fn embed_windows_resources() {
     std::fs::write(&manifest_path, manifest).expect("write manifest");
 
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("../../assets/icon/autoclicker.ico")
+    res.set_icon("../../assets/icon/cadence.ico")
         .set_manifest_file(manifest_path.to_str().expect("UTF-8 path"))
         .set("ProductName", "Autoclicker")
         .set("FileDescription", "Autoclicker")
