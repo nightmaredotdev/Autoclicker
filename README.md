@@ -3,7 +3,7 @@ Cadence is a customizable desktop autoclicker with configurable click timing, hu
 
 Cadence was previously named **Autoclicker**; version 1.0.0 was released under that name. See [Upgrading from Autoclicker 1.0.0](#upgrading-from-autoclicker-100).
 
-> **Status:** stable (1.0). A portable Windows desktop utility: no installer, no administrator rights.
+> **Status:** stable (1.1). A portable Windows desktop utility: no installer, no administrator rights.
 
 ## Platform support
 
