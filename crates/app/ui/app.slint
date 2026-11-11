@@ -1,4 +1,4 @@
-// Autoclicker user interface.
+// Cadence user interface.
 //
 // Logic lives in Rust (crates/app/src/gui.rs); this file only lays out the
 // window and forwards user actions through callbacks.
@@ -286,7 +286,7 @@ component SegmentedControl inherits FocusScope {
 export component AboutWindow inherits Window {
     in property <string> version;
     callback close-clicked();
-    title: "About Autoclicker";
+    title: "About Cadence";
     icon: @image-url("../../../assets/icon/icon-256.png");
     min-width: 380px;
     preferred-width: 380px;
@@ -295,7 +295,7 @@ export component AboutWindow inherits Window {
         spacing: 10px;
         alignment: start;
         Text {
-            text: "Autoclicker";
+            text: "Cadence";
             font-size: 22px;
             font-weight: 700;
         }
@@ -329,7 +329,7 @@ export component AboutWindow inherits Window {
 
 export component MainWindow inherits Window {
     // ---- state from Rust ----
-    in property <string> window-title: "Autoclicker";
+    in property <string> window-title: "Cadence";
     in property <RunStatus> status: RunStatus.stopped;
     in property <string> status-headline: "Stopped";
     in property <string> error-text;
@@ -778,8 +778,8 @@ export component AppTray inherits SystemTrayIcon {
     callback exit();
 
     icon: root.running ? @image-url("../../../assets/icon/tray-running.png") : @image-url("../../../assets/icon/tray-idle.png");
-    tooltip: root.running ? "Autoclicker - running" : "Autoclicker - stopped";
-    title: "Autoclicker";
+    tooltip: root.running ? "Cadence - running" : "Cadence - stopped";
+    title: "Cadence";
     clicked => { root.show-window(); }
 
     Menu {

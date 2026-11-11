@@ -139,7 +139,7 @@ public static class VerifyWin {
         $proc = [System.Diagnostics.Process]::Start($psi)
         try {
             $deadline = (Get-Date).AddSeconds(15)
-            while ([VerifyWin]::Find([uint32]$proc.Id, 'Autoclicker', $true) -eq [IntPtr]::Zero) {
+            while ([VerifyWin]::Find([uint32]$proc.Id, 'Cadence', $true) -eq [IntPtr]::Zero) {
                 if ($proc.HasExited) { Fail "exited early with code $($proc.ExitCode)" }
                 if ((Get-Date) -gt $deadline) { Fail 'main window did not appear' }
                 Start-Sleep -Milliseconds 100

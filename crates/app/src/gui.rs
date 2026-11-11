@@ -1051,7 +1051,7 @@ pub fn run() -> ExitCode {
     let logger = logging::init(log_dir.as_deref());
     install_panic_hook();
     info!(
-        "Autoclicker {} starting (log {})",
+        "Cadence {} starting (log {})",
         env!("CARGO_PKG_VERSION"),
         logger.map_or_else(
             || "disabled".to_string(),
@@ -1086,8 +1086,8 @@ pub fn run() -> ExitCode {
             error!("could not start: {e}");
             log::logger().flush();
             autoclicker_platform::show_error_message(
-                "Autoclicker",
-                &format!("Autoclicker could not start: {e}"),
+                "Cadence",
+                &format!("Cadence could not start: {e}"),
             );
             return ExitCode::FAILURE;
         }

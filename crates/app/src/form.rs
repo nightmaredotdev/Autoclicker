@@ -300,7 +300,7 @@ pub struct StatusView {
     pub target: String,
 }
 
-pub const APP_NAME: &str = "Autoclicker";
+pub const APP_NAME: &str = "Cadence";
 
 pub fn status_view(s: &Snapshot) -> StatusView {
     let (status, headline) = match s.state {
@@ -537,7 +537,7 @@ mod tests {
         let mut s = Snapshot::new(TargetMode::Fixed);
         let v = status_view(&s);
         assert_eq!(v.status, Status::Stopped);
-        assert_eq!(v.window_title, "Autoclicker");
+        assert_eq!(v.window_title, "Cadence");
         assert_eq!(v.target, "Not set");
 
         s.state = RunState::Running;
@@ -545,14 +545,14 @@ mod tests {
         s.target = Some(Point::new(-5, 10));
         let v = status_view(&s);
         assert_eq!(v.status, Status::Running);
-        assert_eq!(v.window_title, "Autoclicker - Running");
+        assert_eq!(v.window_title, "Cadence - Running");
         assert_eq!(v.target, "-5, 10");
 
         s.state = RunState::Faulted;
         s.fault = Some(Fault::PressFailed(InputError::new("SendInput", "blocked")));
         let v = status_view(&s);
         assert_eq!(v.status, Status::Error);
-        assert_eq!(v.window_title, "Autoclicker - Error");
+        assert_eq!(v.window_title, "Cadence - Error");
         assert!(v.error.starts_with("Could not press"), "{}", v.error);
     }
 }

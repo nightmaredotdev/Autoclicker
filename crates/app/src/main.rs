@@ -1,4 +1,4 @@
-//! Autoclicker desktop application entry point.
+//! Cadence desktop application entry point.
 
 // Release builds are GUI applications without a console window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]

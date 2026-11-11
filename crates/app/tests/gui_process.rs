@@ -6,7 +6,7 @@
 //! Each test gives the application its own settings file
 //! (`AUTOCLICKER_CONFIG`, hotkeys on F13/F14/F15), single-instance name
 //! (`AUTOCLICKER_INSTANCE`) and log directory (`AUTOCLICKER_LOG_DIR`), so it
-//! never interferes with a real Autoclicker. Every click is swallowed by a
+//! never interferes with a running Cadence (or Autoclicker). Every click is swallowed by a
 //! low-level mouse hook in this test process, and keys are injected only
 //! while a test-owned window has the foreground.
 
@@ -101,7 +101,7 @@ impl App {
     fn visible_window(&self) -> Option<WindowInfo> {
         windows_of_process(self.0.id())
             .into_iter()
-            .find(|w| w.visible && w.title.starts_with("Autoclicker"))
+            .find(|w| w.visible && w.title.starts_with("Cadence"))
     }
 
     fn window(&self) -> WindowInfo {
@@ -225,13 +225,13 @@ fn closing_the_window_hides_it_and_clicking_continues() {
     let sb = Sandbox::new("hide", true);
     let mut app = sb.start();
     let win = app.window();
-    assert_eq!(win.title, "Autoclicker");
+    assert_eq!(win.title, "Cadence");
     assert!(win.topmost, "always-on-top from the settings is applied");
 
     let keys = foreground_test_window();
     assert_ne!(foreground_window(), win.id, "the GUI is not focused");
     tap(&keys, VK_F13);
-    app.wait_title("Autoclicker - Running");
+    app.wait_title("Cadence - Running");
     assert!(recorder.wait_for(Duration::from_secs(3), |e| downs(e) >= 3));
 
     // The close button hides the window; the process keeps running and clicking.
@@ -327,7 +327,7 @@ fn a_second_instance_shows_the_first_and_exits() {
     );
     // The first instance shows its window again.
     let shown = first.window();
-    assert_eq!(shown.title, "Autoclicker");
+    assert_eq!(shown.title, "Cadence");
     assert!(first.running());
     let log = sb.log_text();
     assert!(log.contains("another instance is already running"), "{log}");
@@ -398,7 +398,7 @@ fn the_log_records_startup_problems_and_shutdown() {
 
     let log = sb.log_text();
     for expected in [
-        "INFO  [autoclicker::gui] Autoclicker ",
+        "INFO  [autoclicker::gui] Cadence ",
         "hotkey toggle = F13",
         "hotkey set target = F15 could not be registered",
         "clicking started (current position mode)",
