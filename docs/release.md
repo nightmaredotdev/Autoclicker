@@ -2,7 +2,7 @@
 
 The portable release is a ZIP with the executable and its documents. It needs
 no installer and no administrator rights. Settings live in
-`%APPDATA%\Autoclicker` and logs in `%LOCALAPPDATA%\Autoclicker\logs`;
+`%APPDATA%\Cadence` and logs in `%LOCALAPPDATA%\Cadence\logs`;
 nothing is written next to the executable.
 
 ## Version and identity
@@ -10,8 +10,8 @@ nothing is written next to the executable.
 * The single version source is `version` in the workspace `Cargo.toml`.
   `crates/app/build.rs` puts it into the executable's version information
   (`FileVersion`, `ProductVersion`) and the manifest (`a.b.c.0`).
-* Product name / file description: "Autoclicker"; original file name
-  `autoclicker.exe`.
+* Product name / file description: "Cadence"; original file name
+  `cadence.exe`.
 * Manifest (`crates/app/app.manifest`): `asInvoker` (no elevation),
   Windows 10/11 compatibility, per-monitor-v2 DPI awareness, common
   controls v6.
@@ -27,13 +27,13 @@ powershell -ExecutionPolicy Bypass -File scripts\package.ps1
 powershell -ExecutionPolicy Bypass -File scripts\verify-package.ps1 -Reproducible -Launch
 ```
 
-`package.ps1` builds `cargo build --release --locked -p autoclicker` (skip
+`package.ps1` builds `cargo build --release --locked -p cadence` (skip
 with `-NoBuild`) and writes
-`target\package\Autoclicker-<version>-windows-x64.zip` containing:
+`target\package\Cadence-<version>-windows-x64.zip` containing:
 
 | File | Content |
 |---|---|
-| `autoclicker.exe` | The application |
+| `cadence.exe` | The application |
 | `README.txt` | Usage, file locations, limitations (`packaging/README.txt`) |
 | `LICENSE.txt` | MIT license |
 | `THIRD-PARTY-NOTICES.txt` | The Slint license notice, every crate used to build the executable with its declared license, the license files from its package (or from `packaging/licenses/`), and the Apache-2.0 text |
@@ -46,10 +46,13 @@ with `-NoBuild`) and writes
 * with `-Reproducible`, that packaging again gives the same SHA-256;
 * with `-Launch` (interactive desktop), that the executable starts from a
   different directory (a path with spaces), uses
-  `%APPDATA%\Autoclicker\config.toml`, writes nothing next to itself, and
+  `%APPDATA%\Cadence\config.toml`, writes nothing next to itself, and
   exits cleanly. This reads your real settings file but does not change it
   (except the one-time removal of obsolete Start/Stop hotkeys from a pre-1.0
-  settings file).
+  settings file). If you have Autoclicker 1.0.0 settings but no Cadence
+  settings yet, the run copies them as a first start would; the check
+  verifies the copy, removes it again and checks that the old file is
+  unchanged.
 
 CI runs the packaging and the non-interactive checks on every push. It does
 not publish anything.

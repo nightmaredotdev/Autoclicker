@@ -5,7 +5,7 @@
 
 use super::error::Win32Error;
 use super::handle::OwnedHandle;
-use autoclicker_core::wait::{Notify, Waiter, Wake};
+use cadence_core::wait::{Notify, Waiter, Wake};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
@@ -120,7 +120,7 @@ impl Waiter for HighResWaiter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autoclicker_core::wait::stress_no_lost_wakeups;
+    use cadence_core::wait::stress_no_lost_wakeups;
     use std::sync::mpsc;
 
     #[test]

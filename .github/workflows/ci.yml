@@ -77,6 +77,6 @@ jobs:
       # Linux is not a supported target yet: only the OS-independent core and
       # the (currently empty on Linux) platform crate are checked here.
       - name: Clippy (core, platform)
-        run: cargo clippy -p autoclicker-core -p autoclicker-platform --all-targets --locked -- -D warnings
+        run: cargo clippy -p cadence-core -p cadence-platform --all-targets --locked -- -D warnings
       - name: Test (core)
-        run: cargo test -p autoclicker-core --locked
+        run: cargo test -p cadence-core --locked

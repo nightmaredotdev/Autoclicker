@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <!-- Template: build.rs replaces {{VERSION}} with the Cargo package version (a.b.c.0). -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="Autoclicker" version="{{VERSION}}" processorArchitecture="amd64"/>
-  <description>Autoclicker</description>
+  <assemblyIdentity type="win32" name="Cadence" version="{{VERSION}}" processorArchitecture="amd64"/>
+  <description>Cadence</description>
   <!-- Runs with the user's normal rights; no elevation prompt. -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

@@ -8,9 +8,9 @@
 
 use super::error::Win32Error;
 use super::keys::{hotkey_modifiers, virtual_key};
-use autoclicker_core::config::{HotkeyAction, HotkeyBindings};
-use autoclicker_core::engine::ThreadExit;
-use autoclicker_core::keys::Hotkey;
+use cadence_core::config::{HotkeyAction, HotkeyBindings};
+use cadence_core::engine::ThreadExit;
+use cadence_core::keys::Hotkey;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::thread::JoinHandle;
 use std::time::Duration;

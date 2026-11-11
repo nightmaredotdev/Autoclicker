@@ -3,7 +3,7 @@
 //! it only runs when `--ignored` is passed:
 //!
 //! ```text
-//! cargo test -p autoclicker --test gui -- --ignored
+//! cargo test -p cadence --test gui -- --ignored
 //! ```
 //!
 //! Actions are performed through the same callbacks the controls invoke, and
@@ -22,21 +22,21 @@ fn main() {
 
 #[cfg(windows)]
 mod imp {
-    use autoclicker::config_store;
-    use autoclicker::gui::{App, GuiOptions};
-    use autoclicker::runtime::{JOIN_TIMEOUT, WaiterKind};
-    use autoclicker::ui::RunStatus;
-    use autoclicker_core::backend::InputBackend;
-    use autoclicker_core::config::{Config, HotkeyAction, HotkeyConfig, TargetMode};
-    use autoclicker_core::engine::ThreadExit;
-    use autoclicker_core::geometry::{Point, Rect};
-    use autoclicker_core::keys::{Hotkey, Key, Modifiers};
-    use autoclicker_platform::diagnostics::{
+    use cadence::config_store;
+    use cadence::gui::{App, GuiOptions};
+    use cadence::runtime::{JOIN_TIMEOUT, WaiterKind};
+    use cadence::ui::RunStatus;
+    use cadence_core::backend::InputBackend;
+    use cadence_core::config::{Config, HotkeyAction, HotkeyConfig, TargetMode};
+    use cadence_core::engine::ThreadExit;
+    use cadence_core::geometry::{Point, Rect};
+    use cadence_core::keys::{Hotkey, Key, Modifiers};
+    use cadence_platform::diagnostics::{
         HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, click_unmarked,
         click_unmarked_button, client_rect, cursor_position, force_foreground, foreground_window,
         monitors, post_close, send_keys, window_at, windows_of_process,
     };
-    use autoclicker_platform::{HotkeyService, WindowsInput};
+    use cadence_platform::{HotkeyService, WindowsInput};
     use slint::{Model, Timer, TimerMode};
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
@@ -153,7 +153,7 @@ mod imp {
     }
 
     /// Keys are only injected while one of this process's windows is in front.
-    fn focus(window: autoclicker_platform::diagnostics::WindowId) {
+    fn focus(window: cadence_platform::diagnostics::WindowId) {
         for _ in 0..40 {
             if force_foreground(window) {
                 pump(Duration::from_millis(80));
@@ -166,7 +166,7 @@ mod imp {
         panic!("inconclusive: could not bring a test-owned window to the foreground");
     }
 
-    fn press(window: autoclicker_platform::diagnostics::WindowId, keys: &[(u16, bool)]) {
+    fn press(window: cadence_platform::diagnostics::WindowId, keys: &[(u16, bool)]) {
         assert_eq!(
             foreground_window(),
             window,
@@ -187,14 +187,14 @@ mod imp {
     }
 
     fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("autoclicker-gui-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cadence-gui-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     /// Hotkeys on F13-F15 so the test never collides with a running
-    /// autoclicker that uses the defaults.
+    /// Cadence that uses the defaults.
     fn initial_config() -> Config {
         Config {
             hotkeys: {
@@ -256,8 +256,8 @@ mod imp {
         let ui = app.ui();
         app.show_window();
         pump(Duration::from_millis(500));
-        let win = main_window("Autoclicker");
-        assert_eq!(win.title, "Autoclicker");
+        let win = main_window("Cadence");
+        assert_eq!(win.title, "Cadence");
         assert!(!win.topmost);
         assert_eq!(ui.get_status(), RunStatus::Stopped);
         assert_eq!(ui.get_status_headline(), "Stopped");
@@ -290,7 +290,7 @@ mod imp {
         pump_until("running state", Duration::from_secs(2), || {
             ui.get_status() == RunStatus::Running
         });
-        assert_eq!(main_window("Autoclicker").title, "Autoclicker - Running");
+        assert_eq!(main_window("Cadence").title, "Cadence - Running");
         ui.invoke_start_stop_clicked();
         pump_until("stopped state", Duration::from_secs(2), || {
             ui.get_status() == RunStatus::Stopped
@@ -302,7 +302,7 @@ mod imp {
             events.iter().all(|e| e.point == at),
             "cursor mode must not move the cursor"
         );
-        assert_eq!(main_window("Autoclicker").title, "Autoclicker");
+        assert_eq!(main_window("Cadence").title, "Cadence");
         recorder.clear();
 
         // While picking, the recorder (installed before the picker, so it
@@ -576,7 +576,7 @@ mod imp {
         assert_eq!(ui.get_settings_error(), "");
 
         step("clicking empty space outside an edited field commits it");
-        let gui = main_window("Autoclicker").id;
+        let gui = main_window("Cadence").id;
         let client = client_rect(gui).expect("client area");
         // Inside the window's left padding, outside every card and control.
         let empty = Point::new(client.left + 5, (client.top + client.bottom) / 2);
@@ -884,17 +884,17 @@ mod imp {
         ui.set_keep_on_top(true);
         ui.invoke_keep_on_top_toggled(true);
         pump_until("topmost", Duration::from_secs(2), || {
-            main_window("Autoclicker").topmost
+            main_window("Cadence").topmost
         });
         assert!(saved(path).window.always_on_top);
         ui.set_keep_on_top(false);
         ui.invoke_keep_on_top_toggled(false);
         pump_until("not topmost", Duration::from_secs(2), || {
-            !main_window("Autoclicker").topmost
+            !main_window("Cadence").topmost
         });
         assert!(!saved(path).window.always_on_top);
 
-        let gui = main_window("Autoclicker").id;
+        let gui = main_window("Cadence").id;
         let index =
             |a: HotkeyAction| HotkeyAction::ALL.iter().position(|x| *x == a).unwrap() as i32;
         let binding = |a: HotkeyAction| {
@@ -1035,12 +1035,12 @@ mod imp {
             downs(&recorder.events()) >= 2
         });
         assert!(tray.get_running(), "tray reflects the running state");
-        assert!(post_close(main_window("Autoclicker").id), "WM_CLOSE posted");
+        assert!(post_close(main_window("Cadence").id), "WM_CLOSE posted");
         pump_until("hidden", Duration::from_secs(2), || !app.window_visible());
         assert!(
             !own_windows()
                 .iter()
-                .any(|w| w.visible && w.title.starts_with("Autoclicker")),
+                .any(|w| w.visible && w.title.starts_with("Cadence")),
             "main window hidden"
         );
         assert!(!tray.get_window_visible());
@@ -1082,13 +1082,13 @@ mod imp {
         let titled = || {
             own_windows()
                 .iter()
-                .any(|w| w.visible && w.title.starts_with("Autoclicker"))
+                .any(|w| w.visible && w.title.starts_with("Cadence"))
         };
         pump_until("shown with its title", Duration::from_secs(3), || {
             app.window_visible() && titled()
         });
-        let shown = main_window("Autoclicker");
-        assert_eq!(shown.title, "Autoclicker");
+        let shown = main_window("Cadence");
+        assert_eq!(shown.title, "Cadence");
         assert!(tray.get_window_visible());
         assert_eq!(ui.get_status(), RunStatus::Stopped);
         tray.invoke_toggle_window();
@@ -1105,7 +1105,7 @@ mod imp {
         pump_until("about window", Duration::from_secs(2), || {
             own_windows()
                 .iter()
-                .any(|w| w.visible && w.title == "About Autoclicker")
+                .any(|w| w.visible && w.title == "About Cadence")
         });
 
         step("tray Exit while clicking stops the engine and shuts down completely");
@@ -1127,7 +1127,7 @@ mod imp {
         assert!(
             !own_windows()
                 .iter()
-                .any(|w| w.visible && w.title.starts_with("Autoclicker")),
+                .any(|w| w.visible && w.title.starts_with("Cadence")),
             "main window hidden"
         );
         assert!(

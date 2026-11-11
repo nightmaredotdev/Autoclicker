@@ -1,0 +1,35 @@
+
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 256 256"
+     width="256"
+     height="256"
+     fill="none"
+     stroke="currentColor"
+     stroke-linecap="round"
+     stroke-linejoin="round"
+     color="#111">
+
+  <title>Cadence</title>
+
+  <g transform="translate(0 -0.256) rotate(15 128 128)">
+
+    <!-- Outer click ring -->
+    <path
+      d="M161.079 101.071 A61.072 61.072 0 1 0 162.541 156.013"
+      stroke-width="14"/>
+
+    <!-- Inner click ring -->
+    <path
+      d="M135.116 108.134 A34.725 34.725 0 1 0 138.033 149.556"
+      stroke-width="12"/>
+
+    <!-- Cursor -->
+    <g transform="translate(148 128) rotate(-66) scale(2.5)">
+      <path
+        d="M0 0 L0 24 L7 17 L18 16 Z"
+        fill="currentColor"
+        stroke-width="3"/>
+    </g>
+
+  </g>
+</svg>

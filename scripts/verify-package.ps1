@@ -11,10 +11,13 @@
     -Reproducible: packages again and requires an identical SHA-256.
     -Launch (interactive desktop): starts the extracted executable from that
       directory with its own single-instance name and log directory, checks
-      that it uses %APPDATA%\Autoclicker for settings and writes nothing next
-      to itself, then ends it through the session-end path and requires exit
+      that it uses %APPDATA%\Cadence for settings and writes nothing next to
+      itself, then ends it through the session-end path and requires exit
       code 0. It reads, but does not change, your settings file (except the
       one-time removal of obsolete Start/Stop hotkeys from a pre-1.0 file).
+      If you have Autoclicker 1.0.0 settings but no Cadence settings yet, the
+      run copies them as a first start would; the check verifies the copy and
+      that the old file is unchanged, then removes the copy again.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\verify-package.ps1 -Reproducible -Launch
@@ -30,20 +33,20 @@ function Fail([string]$message) { throw "VERIFY FAILED: $message" }
 function Ok([string]$message) { Write-Output "  ok  $message" }
 
 $version = ((& cargo metadata --format-version 1 --no-deps --locked) -join "`n" | ConvertFrom-Json).packages |
-    Where-Object { $_.name -eq 'autoclicker' } | ForEach-Object { $_.version }
-$name = "Autoclicker-$version-windows-x64"
+    Where-Object { $_.name -eq 'cadence' } | ForEach-Object { $_.version }
+$name = "Cadence-$version-windows-x64"
 if (-not $ZipPath) { $ZipPath = Join-Path $root "target\package\$name.zip" }
 if (-not (Test-Path $ZipPath)) { Fail "missing $ZipPath" }
 Write-Output "Verifying $ZipPath"
 
 # ---- extract into a different directory -------------------------------------
-$work = Join-Path ([IO.Path]::GetTempPath()) ("autoclicker verify " + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath()) ("cadence verify " + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $work)
     $folder = Join-Path $work $name
-    $expected = @('LICENSE.txt', 'README.txt', 'THIRD-PARTY-NOTICES.txt', 'VERSION.txt', 'autoclicker.exe')
+    $expected = @('LICENSE.txt', 'README.txt', 'THIRD-PARTY-NOTICES.txt', 'VERSION.txt', 'cadence.exe')
     $actual = @(Get-ChildItem -LiteralPath $folder -File | ForEach-Object Name | Sort-Object)
     if ((Compare-Object $expected $actual) -or @(Get-ChildItem -LiteralPath $work).Count -ne 1) {
         Fail "unexpected contents: $($actual -join ', ')"
@@ -51,7 +54,7 @@ try {
     Ok "contents: $($actual -join ', ')"
 
     $versionText = Get-Content -LiteralPath (Join-Path $folder 'VERSION.txt') -Raw
-    if (-not $versionText.StartsWith("Autoclicker $version")) { Fail "VERSION.txt: $versionText" }
+    if (-not $versionText.StartsWith("Cadence $version")) { Fail "VERSION.txt: $versionText" }
     Ok "VERSION.txt names version $version"
     $notices = Get-Content -LiteralPath (Join-Path $folder 'THIRD-PARTY-NOTICES.txt') -Raw
     if (-not $notices.Contains('Slint Royalty-free') -or -not $notices.Contains('Apache License')) { Fail 'third-party notices incomplete' }
@@ -68,10 +71,10 @@ try {
     }
 
     # ---- executable metadata ----------------------------------------------------
-    $exe = Join-Path $folder 'autoclicker.exe'
+    $exe = Join-Path $folder 'cadence.exe'
     $info = (Get-Item -LiteralPath $exe).VersionInfo
-    foreach ($pair in @(@('ProductName', 'Autoclicker'), @('FileDescription', 'Autoclicker'),
-                        @('OriginalFilename', 'autoclicker.exe'), @('ProductVersion', $version), @('FileVersion', $version))) {
+    foreach ($pair in @(@('ProductName', 'Cadence'), @('FileDescription', 'Cadence'),
+                        @('OriginalFilename', 'cadence.exe'), @('ProductVersion', $version), @('FileVersion', $version))) {
         if ($info.($pair[0]) -ne $pair[1]) { Fail "$($pair[0]) is '$($info.($pair[0]))', expected '$($pair[1])'" }
     }
     Ok "version info: $($info.ProductName) $($info.ProductVersion), '$($info.FileDescription)', $($info.LegalCopyright)"
@@ -79,9 +82,15 @@ try {
     Add-Type -AssemblyName System.Drawing
     $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
     $bmp = $icon.ToBitmap()
+    # The Cadence icon (assets/icon): transparent corner, graphite tile, and
+    # the near-white cursor of the logo.
+    $corner = $bmp.GetPixel(0, 0)
+    if ($corner.A -gt 30) { Fail "embedded icon has no transparent corner (pixel $corner)" }
     $px = $bmp.GetPixel([int]($bmp.Width * 0.83), [int]($bmp.Height * 0.2))
-    if (-not ($px.B -gt 180 -and $px.R -lt 100 -and $px.A -gt 200)) { Fail "embedded icon not found (pixel $px)" }
-    Ok "embedded application icon ($($bmp.Width)x$($bmp.Height), background $($px.R),$($px.G),$($px.B))"
+    if (-not ($px.R -lt 60 -and $px.G -lt 60 -and $px.B -lt 60 -and $px.A -gt 200)) { Fail "embedded icon not found (pixel $px)" }
+    $glyph = $bmp.GetPixel([int]($bmp.Width * 0.6875), [int]($bmp.Height * 0.5))
+    if (-not ($glyph.R -gt 230 -and $glyph.G -gt 230 -and $glyph.B -gt 230 -and $glyph.A -gt 200)) { Fail "embedded icon is not the Cadence logo (pixel $glyph)" }
+    Ok "embedded application icon ($($bmp.Width)x$($bmp.Height), tile $($px.R),$($px.G),$($px.B), logo $($glyph.R),$($glyph.G),$($glyph.B))"
 
     $text = [System.Text.Encoding]::ASCII.GetString([System.IO.File]::ReadAllBytes($exe))
     foreach ($needle in @('level="asInvoker"', 'PerMonitorV2', "version=""$version.0""")) {
@@ -130,33 +139,63 @@ public static class VerifyWin {
         $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
         $psi.WorkingDirectory = $folder
         $psi.UseShellExecute = $false
-        $psi.EnvironmentVariables['AUTOCLICKER_INSTANCE'] = "AutoclickerVerify.$PID"
-        $psi.EnvironmentVariables['AUTOCLICKER_LOG_DIR'] = $logs
-        [void]$psi.EnvironmentVariables.Remove('AUTOCLICKER_CONFIG')
+        $psi.EnvironmentVariables['CADENCE_INSTANCE'] = "CadenceVerify.$PID"
+        $psi.EnvironmentVariables['CADENCE_LOG_DIR'] = $logs
+        [void]$psi.EnvironmentVariables.Remove('CADENCE_CONFIG')
+        # Settings state before the run: a first start copies Autoclicker
+        # 1.0.0 settings if Cadence has none. The copy is checked and removed
+        # afterwards; the old file must stay unchanged.
+        $appData = [Environment]::GetFolderPath('ApplicationData')
+        $cadenceConfig = Join-Path $appData 'Cadence\config.toml'
+        $cadenceDir = Split-Path -Parent $cadenceConfig
+        $cadenceDirExisted = Test-Path -LiteralPath $cadenceDir
+        $legacyConfig = Join-Path $appData 'Autoclicker\config.toml'
+        $legacyHash = if (Test-Path -LiteralPath $legacyConfig -PathType Leaf) { (Get-FileHash -LiteralPath $legacyConfig).Hash } else { $null }
+        $firstStart = -not (Test-Path -LiteralPath $cadenceConfig)
         $proc = [System.Diagnostics.Process]::Start($psi)
         try {
             $deadline = (Get-Date).AddSeconds(15)
-            while ([VerifyWin]::Find([uint32]$proc.Id, 'Autoclicker', $true) -eq [IntPtr]::Zero) {
+            while ([VerifyWin]::Find([uint32]$proc.Id, 'Cadence', $true) -eq [IntPtr]::Zero) {
                 if ($proc.HasExited) { Fail "exited early with code $($proc.ExitCode)" }
                 if ((Get-Date) -gt $deadline) { Fail 'main window did not appear' }
                 Start-Sleep -Milliseconds 100
             }
             Ok 'starts from the extracted directory and shows its window'
 
-            $log = Get-Content -LiteralPath (Join-Path $logs 'autoclicker.log') -Raw
-            $appData = [Environment]::GetFolderPath('ApplicationData')
+            $log = Get-Content -LiteralPath (Join-Path $logs 'cadence.log') -Raw
             $profile = [Environment]::GetFolderPath('UserProfile')
-            $expectedConfig = (Join-Path $appData 'Autoclicker\config.toml').Replace($profile, '%USERPROFILE%')
+            $expectedConfig = (Join-Path $appData 'Cadence\config.toml').Replace($profile, '%USERPROFILE%')
             if (-not $log.Contains("settings file $expectedConfig")) { Fail "settings not under %APPDATA%:`n$log" }
             Ok "settings file: $expectedConfig"
+            if ($firstStart -and $legacyHash) {
+                if ($log.Contains('copied the Autoclicker 1.0.0 settings')) {
+                    if (-not (Test-Path -LiteralPath $cadenceConfig)) { Fail 'settings copy reported but not found' }
+                    Ok 'Autoclicker 1.0.0 settings copied on the first start'
+                } elseif ($log.Contains('did not copy the Autoclicker 1.0.0 settings')) {
+                    Ok 'Autoclicker 1.0.0 settings found but not usable; not copied (logged)'
+                } else {
+                    Fail "first start with Autoclicker 1.0.0 settings did not report the copy:`n$log"
+                }
+            }
 
-            $events = [VerifyWin]::Find([uint32]$proc.Id, 'Autoclicker system events', $false)
+            $events = [VerifyWin]::Find([uint32]$proc.Id, 'Cadence system events', $false)
             if (-not [VerifyWin]::EndSession($events)) { Fail 'session-end messages failed' }
             if (-not $proc.WaitForExit(10000)) { Fail 'did not exit after the session ended' }
             if ($proc.ExitCode -ne 0) { Fail "exit code $($proc.ExitCode)" }
             Ok 'clean exit (code 0) through the session-end path'
         } finally {
-            if (-not $proc.HasExited) { $proc.Kill() }
+            if (-not $proc.HasExited) { $proc.Kill(); $proc.WaitForExit(5000) | Out-Null }
+            if ($firstStart -and (Test-Path -LiteralPath $cadenceConfig)) {
+                Remove-Item -LiteralPath $cadenceConfig
+                if (-not $cadenceDirExisted -and -not (Get-ChildItem -LiteralPath $cadenceDir -Force)) {
+                    Remove-Item -LiteralPath $cadenceDir
+                }
+                Ok 'removed the settings copy made by this check'
+            }
+        }
+        if ($legacyHash) {
+            if ((Get-FileHash -LiteralPath $legacyConfig).Hash -ne $legacyHash) { Fail 'the Autoclicker 1.0.0 settings file was changed' }
+            Ok 'Autoclicker 1.0.0 settings file unchanged'
         }
         $after = @(Get-ChildItem -LiteralPath $folder -Recurse -Force | ForEach-Object Name | Sort-Object)
         if (Compare-Object $expected $after) { Fail "files were written next to the executable: $($after -join ', ')" }

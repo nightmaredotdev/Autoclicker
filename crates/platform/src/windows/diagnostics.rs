@@ -9,7 +9,7 @@
 
 use super::error::Win32Error;
 use super::input::INJECTION_SIGNATURE;
-use autoclicker_core::geometry::{Point, Rect};
+use cadence_core::geometry::{Point, Rect};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -323,7 +323,7 @@ unsafe extern "system" fn window_proc(
 fn register_class() -> &'static [u16] {
     static CLASS: OnceLock<Vec<u16>> = OnceLock::new();
     CLASS.get_or_init(|| {
-        let name = wide("AutoclickerDiagnosticsWindow");
+        let name = wide("CadenceDiagnosticsWindow");
         let wc = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
             // SAFETY: null module name returns this executable's handle.

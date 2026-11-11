@@ -1,4 +1,4 @@
-//! Autoclicker desktop application entry point.
+//! Cadence desktop application entry point.
 
 // Release builds are GUI applications without a console window.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -9,11 +9,11 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     #[cfg(windows)]
     {
-        autoclicker::gui::run()
+        cadence::gui::run()
     }
     #[cfg(not(windows))]
     {
-        eprintln!("autoclicker: only Windows is supported at the moment");
+        eprintln!("cadence: only Windows is supported at the moment");
         ExitCode::FAILURE
     }
 }

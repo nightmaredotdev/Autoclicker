@@ -19,14 +19,14 @@ use crate::form::{self, IntervalUnit, KeyInput, Status, TimingFields};
 use crate::runtime::{RebindError, Runtime, ShutdownReport, WaiterKind};
 use crate::ui::{AboutWindow, AppTray, HotkeyRow, MainWindow, RunStatus};
 use crate::{config_store, logging};
-use autoclicker_core::backend::InputBackend;
-use autoclicker_core::config::{ClickConfig, Config, HotkeyAction, TargetMode};
-use autoclicker_core::engine::Command;
-use autoclicker_core::geometry::Point;
-use autoclicker_core::keys::{Hotkey, Modifiers};
-use autoclicker_core::status::{RunState, Snapshot};
-use autoclicker_platform::{
-    Acquire, PickOutcome, PointPicker, SystemEvents, WindowsInput, acquire_instance,
+use cadence_core::backend::InputBackend;
+use cadence_core::config::{ClickConfig, Config, HotkeyAction, TargetMode};
+use cadence_core::engine::Command;
+use cadence_core::geometry::Point;
+use cadence_core::keys::{Hotkey, Modifiers};
+use cadence_core::status::{RunState, Snapshot};
+use cadence_platform::{
+    Acquire, InstanceLock, PickOutcome, PointPicker, SystemEvents, WindowsInput, acquire_instance,
     activate_own_window, enable_per_monitor_dpi_awareness,
 };
 use log::{error, info, warn};
@@ -39,9 +39,16 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::Duration;
 
 const NOTICE_DURATION: Duration = Duration::from_secs(6);
-/// Single-instance lock name; `AUTOCLICKER_INSTANCE` overrides it (tests).
-pub const INSTANCE_ENV: &str = "AUTOCLICKER_INSTANCE";
-const DEFAULT_INSTANCE: &str = "Autoclicker";
+/// Single-instance lock name; `CADENCE_INSTANCE` overrides it (tests).
+pub const INSTANCE_ENV: &str = "CADENCE_INSTANCE";
+const DEFAULT_INSTANCE: &str = "Cadence";
+/// The single-instance name of Autoclicker 1.0.0, the former name of this
+/// application. Cadence holds this lock too (unless `CADENCE_INSTANCE` is
+/// set), so the two never run at the same time: Autoclicker 1.0.0 started
+/// while Cadence runs finds its lock taken and exits (as it always has, after
+/// signalling the lock's activate event, which Cadence answers by showing its
+/// window), and Cadence started while Autoclicker 1.0.0 runs does the same.
+const LEGACY_INSTANCE: &str = "Autoclicker";
 /// How long the end of the Windows session waits for shutdown to finish.
 const SESSION_END_GRACE: Duration = Duration::from_secs(4);
 
@@ -429,7 +436,7 @@ impl Controller {
         self.log_transition(&update.snapshot);
         for notice in &update.notices {
             match notice {
-                autoclicker_core::status::Notice::ReleaseRecovered { .. } => warn!("{notice}"),
+                cadence_core::status::Notice::ReleaseRecovered { .. } => warn!("{notice}"),
                 _ => info!("{notice}"),
             }
         }
@@ -440,7 +447,7 @@ impl Controller {
             .notices
             .iter()
             .rev()
-            .find(|n| !matches!(n, autoclicker_core::status::Notice::TargetSet(_)))
+            .find(|n| !matches!(n, cadence_core::status::Notice::TargetSet(_)))
         {
             self.show_notice(capitalize(&notice.to_string()));
         }
@@ -1040,6 +1047,67 @@ enum BindError {
     Registration(String),
 }
 
+/// Result of [`acquire_instance_locks`].
+#[derive(Debug)]
+enum InstanceCheck {
+    /// Start, holding these locks (none if the check itself failed).
+    Run(Vec<InstanceLock>),
+    /// Another Cadence instance runs; it has been asked to show itself.
+    CadenceRunning,
+    /// Autoclicker 1.0.0 runs; it has been asked to show itself.
+    AutoclickerRunning,
+}
+
+/// Acquires the single-instance lock `instance` and then, if given, the
+/// legacy lock of Autoclicker 1.0.0. If either is held by a running program,
+/// that program is asked to show itself (by `acquire_instance`) and every
+/// lock acquired so far is released again. A lock that cannot be checked at
+/// all is logged and skipped, as before.
+fn acquire_instance_locks(instance: &str, legacy: Option<&str>) -> InstanceCheck {
+    let mut held = Vec::new();
+    match acquire_instance(instance) {
+        Ok(Acquire::Acquired(lock)) => held.push(lock),
+        Ok(Acquire::AlreadyRunning) => return InstanceCheck::CadenceRunning,
+        Err(e) => warn!("single-instance check failed ({e}); continuing without it"),
+    }
+    if let Some(legacy) = legacy {
+        match acquire_instance(legacy) {
+            Ok(Acquire::Acquired(lock)) => held.push(lock),
+            Ok(Acquire::AlreadyRunning) => {
+                drop(held); // release the Cadence lock before exiting
+                return InstanceCheck::AutoclickerRunning;
+            }
+            Err(e) => warn!("could not check for a running Autoclicker 1.0.0 ({e}); continuing"),
+        }
+    }
+    InstanceCheck::Run(held)
+}
+
+/// Copies the Autoclicker 1.0.0 settings on the first start of Cadence (see
+/// [`config_store::migrate_legacy`]). Only for the real settings location,
+/// not for a `CADENCE_CONFIG` override.
+fn migrate_legacy_settings() {
+    if std::env::var_os(config_store::PATH_OVERRIDE_ENV).is_some() {
+        return;
+    }
+    let (Some(path), Some(legacy)) = (config_store::default_path(), config_store::legacy_path())
+    else {
+        return;
+    };
+    match config_store::migrate_legacy(&path, &legacy) {
+        config_store::Migration::NotNeeded => {}
+        config_store::Migration::Copied => info!(
+            "copied the Autoclicker 1.0.0 settings from {} (the old file is unchanged)",
+            logging::display_path(&legacy)
+        ),
+        config_store::Migration::Skipped(reason) => warn!(
+            "did not copy the Autoclicker 1.0.0 settings from {}: {reason}; default settings \
+             are used and the old file is unchanged",
+            logging::display_path(&legacy)
+        ),
+    }
+}
+
 /// Entry point of the desktop application.
 ///
 /// Startup: logging, single-instance check (a second instance asks the first
@@ -1051,7 +1119,7 @@ pub fn run() -> ExitCode {
     let logger = logging::init(log_dir.as_deref());
     install_panic_hook();
     info!(
-        "Autoclicker {} starting (log {})",
+        "Cadence {} starting (log {})",
         env!("CARGO_PKG_VERSION"),
         logger.map_or_else(
             || "disabled".to_string(),
@@ -1059,19 +1127,26 @@ pub fn run() -> ExitCode {
         )
     );
 
-    let instance = std::env::var(INSTANCE_ENV).unwrap_or_else(|_| DEFAULT_INSTANCE.to_string());
-    let lock = match acquire_instance(&instance) {
-        Ok(Acquire::Acquired(lock)) => Some(lock),
-        Ok(Acquire::AlreadyRunning) => {
+    let instance_override = std::env::var(INSTANCE_ENV).ok();
+    let legacy = instance_override.is_none().then_some(LEGACY_INSTANCE);
+    let instance = instance_override.unwrap_or_else(|| DEFAULT_INSTANCE.to_string());
+    let locks = match acquire_instance_locks(&instance, legacy) {
+        InstanceCheck::Run(locks) => locks,
+        InstanceCheck::CadenceRunning => {
             info!("another instance is already running; asked it to show its window");
             log::logger().flush();
             return ExitCode::SUCCESS;
         }
-        Err(e) => {
-            warn!("single-instance check failed ({e}); continuing without it");
-            None
+        InstanceCheck::AutoclickerRunning => {
+            info!(
+                "Autoclicker 1.0.0 (the former name of Cadence) is running; asked it to show \
+                 its window. Exit it before starting Cadence."
+            );
+            log::logger().flush();
+            return ExitCode::SUCCESS;
         }
     };
+    migrate_legacy_settings();
 
     let options = GuiOptions {
         log_dir,
@@ -1085,20 +1160,20 @@ pub fn run() -> ExitCode {
         Err(e) => {
             error!("could not start: {e}");
             log::logger().flush();
-            autoclicker_platform::show_error_message(
-                "Autoclicker",
-                &format!("Autoclicker could not start: {e}"),
+            cadence_platform::show_error_message(
+                "Cadence",
+                &format!("Cadence could not start: {e}"),
             );
             return ExitCode::FAILURE;
         }
     };
 
-    let events = lock.as_ref().and_then(|lock| {
+    let events = (!locks.is_empty()).then_some(()).and_then(|()| {
         let show = app.ui().as_weak();
         let exit = app.ui().as_weak();
         let done = app.shutdown_signal();
         let started = SystemEvents::start(
-            lock,
+            &locks.iter().collect::<Vec<_>>(),
             move || {
                 let _ = show.upgrade_in_event_loop(|ui| ui.invoke_show_requested());
             },
@@ -1119,12 +1194,12 @@ pub fn run() -> ExitCode {
     let result = app.run();
     if let Some(events) = events {
         let exit = events.shutdown(crate::runtime::JOIN_TIMEOUT);
-        if exit != autoclicker_core::engine::ThreadExit::Clean {
+        if exit != cadence_core::engine::ThreadExit::Clean {
             warn!("system-events thread: {exit:?}");
         }
     }
     drop(app); // drops the tray icon and windows
-    drop(lock);
+    drop(locks);
     let code = match result {
         Ok(Some(report)) if report.is_clean() => ExitCode::SUCCESS,
         Ok(Some(_)) => ExitCode::FAILURE,
@@ -1147,4 +1222,98 @@ fn install_panic_hook() {
         log::logger().flush();
         previous(info);
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    fn unique(name: &str) -> String {
+        format!("CadenceTest.gui-{name}.{}", std::process::id())
+    }
+
+    fn held(check: &InstanceCheck) -> usize {
+        match check {
+            InstanceCheck::Run(locks) => locks.len(),
+            other => panic!("expected Run, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_first_start_holds_both_locks() {
+        let (main, legacy) = (unique("both-main"), unique("both-legacy"));
+        let check = acquire_instance_locks(&main, Some(&legacy));
+        assert_eq!(held(&check), 2);
+        // Another Cadence, and Autoclicker 1.0.0, would both find a lock taken.
+        assert!(matches!(
+            acquire_instance(&main),
+            Ok(Acquire::AlreadyRunning)
+        ));
+        assert!(matches!(
+            acquire_instance(&legacy),
+            Ok(Acquire::AlreadyRunning)
+        ));
+        drop(check);
+        assert!(matches!(acquire_instance(&main), Ok(Acquire::Acquired(_))));
+        assert!(matches!(
+            acquire_instance(&legacy),
+            Ok(Acquire::Acquired(_))
+        ));
+    }
+
+    #[test]
+    fn a_running_autoclicker_is_shown_and_no_lock_is_kept() {
+        let (main, legacy) = (unique("old-main"), unique("old-legacy"));
+        // Stand-in for a running Autoclicker 1.0.0, listening for activation.
+        let Ok(Acquire::Acquired(old)) = acquire_instance(&legacy) else {
+            panic!("legacy acquire");
+        };
+        let (tx, rx) = mpsc::channel();
+        let events = SystemEvents::start(&[&old], move || tx.send(()).unwrap(), || {}).unwrap();
+        assert!(matches!(
+            acquire_instance_locks(&main, Some(&legacy)),
+            InstanceCheck::AutoclickerRunning
+        ));
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "Autoclicker was asked to show its window"
+        );
+        assert!(
+            matches!(acquire_instance(&main), Ok(Acquire::Acquired(_))),
+            "the Cadence lock was released again"
+        );
+        let _ = events.shutdown(Duration::from_secs(2));
+    }
+
+    #[test]
+    fn a_running_cadence_is_shown_and_the_legacy_lock_is_not_taken() {
+        let (main, legacy) = (unique("dup-main"), unique("dup-legacy"));
+        let first = acquire_instance_locks(&main, Some(&legacy));
+        assert_eq!(held(&first), 2);
+        let (other_main, other_legacy) = (unique("dup2-main"), unique("dup2-legacy"));
+        let Ok(Acquire::Acquired(running)) = acquire_instance(&other_main) else {
+            panic!("acquire");
+        };
+        assert!(matches!(
+            acquire_instance_locks(&other_main, Some(&other_legacy)),
+            InstanceCheck::CadenceRunning
+        ));
+        assert!(
+            matches!(acquire_instance(&other_legacy), Ok(Acquire::Acquired(_))),
+            "the legacy lock is left free"
+        );
+        drop((running, first));
+    }
+
+    #[test]
+    fn without_a_legacy_name_only_the_instance_lock_is_held() {
+        let (main, legacy) = (unique("solo-main"), unique("solo-legacy"));
+        let check = acquire_instance_locks(&main, None);
+        assert_eq!(held(&check), 1);
+        assert!(matches!(
+            acquire_instance(&legacy),
+            Ok(Acquire::Acquired(_))
+        ));
+    }
 }

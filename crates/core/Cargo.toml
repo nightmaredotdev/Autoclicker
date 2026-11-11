@@ -1,5 +1,5 @@
 [package]
-name = "autoclicker-core"
+name = "cadence-core"
 description = "Portable autoclicker logic: configuration, scheduling and the click engine."
 version.workspace = true
 edition.workspace = true

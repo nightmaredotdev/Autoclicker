@@ -1,6 +1,6 @@
 [package]
-name = "autoclicker"
-description = "Desktop autoclicker application."
+name = "cadence"
+description = "Cadence, a desktop autoclicker application."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,8 +9,8 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
-autoclicker-core.workspace = true
-autoclicker-platform.workspace = true
+cadence-core.workspace = true
+cadence-platform.workspace = true
 directories.workspace = true
 log.workspace = true
 slint.workspace = true
@@ -22,7 +22,7 @@ winresource.workspace = true
 
 [dev-dependencies]
 # Integration tests observe injected input with the platform's test helpers.
-autoclicker-platform = { workspace = true, features = ["diagnostics"] }
+cadence-platform = { workspace = true, features = ["diagnostics"] }
 
 # The GUI test drives a real window, which must run on the main thread.
 [[test]]

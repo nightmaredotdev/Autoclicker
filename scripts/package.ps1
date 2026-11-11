@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Builds the portable Windows release ZIP of Autoclicker.
+    Builds the portable Windows release ZIP of Cadence.
 
 .DESCRIPTION
     1. Builds the release executable (unless -NoBuild).
-    2. Stages autoclicker.exe, README.txt, LICENSE.txt, VERSION.txt and
+    2. Stages cadence.exe, README.txt, LICENSE.txt, VERSION.txt and
        THIRD-PARTY-NOTICES.txt (the license texts of every crate compiled into
        the executable, collected from the cargo registry).
-    3. Writes target\package\Autoclicker-<version>-windows-x64.zip.
+    3. Writes target\package\Cadence-<version>-windows-x64.zip.
 
     The ZIP is deterministic: entries are sorted, every entry gets the commit
     timestamp, and text files are written byte-for-byte reproducibly. With the
@@ -33,13 +33,13 @@ function Invoke-Checked([string]$exe, [string[]]$arguments) {
 
 $target = 'x86_64-pc-windows-msvc'
 $metadata = (Invoke-Checked 'cargo' @('metadata', '--format-version', '1', '--locked', '--filter-platform', $target)) -join "`n" | ConvertFrom-Json
-$app = $metadata.packages | Where-Object { $_.name -eq 'autoclicker' } | Select-Object -First 1
+$app = $metadata.packages | Where-Object { $_.name -eq 'cadence' } | Select-Object -First 1
 $version = $app.version
 
 if (-not $NoBuild) {
-    Invoke-Checked 'cargo' @('build', '--release', '--locked', '-p', 'autoclicker') | Out-Null
+    Invoke-Checked 'cargo' @('build', '--release', '--locked', '-p', 'cadence') | Out-Null
 }
-$exe = Join-Path $root 'target\release\autoclicker.exe'
+$exe = Join-Path $root 'target\release\cadence.exe'
 if (-not (Test-Path $exe)) { throw "missing $exe (build first or omit -NoBuild)" }
 
 $commit = (Invoke-Checked 'git' @('rev-parse', 'HEAD')).Trim()
@@ -65,7 +65,7 @@ while ($queue.Count -gt 0) {
     }
 }
 $crates = $seen | ForEach-Object { $byId[$_] } |
-    Where-Object { -not $_.name.StartsWith('autoclicker') } |
+    Where-Object { -not $_.name.StartsWith('cadence') } |
     Sort-Object name, version
 
 $licensePattern = '^(LICEN[CS]E|COPYING|COPYRIGHT|NOTICE|UNLICENSE)([-._].*)?$'
@@ -73,14 +73,14 @@ $apacheText = $null
 $missing = 0
 $supplemented = 0
 $notices = New-Object System.Text.StringBuilder
-[void]$notices.Append("Third-party notices for Autoclicker $version`n")
+[void]$notices.Append("Third-party notices for Cadence $version`n")
 [void]$notices.Append("=" * 60 + "`n`n")
 [void]$notices.Append(@"
 Slint (https://slint.dev) is used under the Slint Royalty-free Desktop,
 Mobile, and Web Applications License v2.0. As that license requires, the
 application's About window shows the AboutSlint attribution.
 
-The following crates are used to build autoclicker.exe (runtime libraries
+The following crates are used to build cadence.exe (runtime libraries
 and the procedural macros that generate code for it). For each, its declared
 license and the license files shipped in its package are included. Crates that
 ship no license file are marked; the standard Apache-2.0 text is appended at
@@ -136,18 +136,18 @@ if ($apacheText) {
 }
 
 # ---- staging ----------------------------------------------------------------
-$name = "Autoclicker-$version-windows-x64"
+$name = "Cadence-$version-windows-x64"
 $outDir = Join-Path $root 'target\package'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $zipPath = Join-Path $outDir "$name.zip"
 
 $readme = [System.IO.File]::ReadAllText((Join-Path $root 'packaging\README.txt')).Replace("`r`n", "`n").Replace('{{VERSION}}', $version)
 $license = [System.IO.File]::ReadAllText((Join-Path $root 'LICENSE')).Replace("`r`n", "`n")
-$versionText = "Autoclicker $version`nCommit: $commit$(if ($dirty) { ' (with uncommitted changes)' })`nCommit date: $($timestamp.ToString('yyyy-MM-dd HH:mm:ss')) UTC`nTarget: $target`n"
+$versionText = "Cadence $version`nCommit: $commit$(if ($dirty) { ' (with uncommitted changes)' })`nCommit date: $($timestamp.ToString('yyyy-MM-dd HH:mm:ss')) UTC`nTarget: $target`n"
 
 function To-Crlf([string]$s) { return $s.Replace("`n", "`r`n") }
 $entries = [ordered]@{
-    "$name/autoclicker.exe"          = [System.IO.File]::ReadAllBytes($exe)
+    "$name/cadence.exe"              = [System.IO.File]::ReadAllBytes($exe)
     "$name/LICENSE.txt"              = $utf8.GetBytes((To-Crlf $license))
     "$name/README.txt"               = $utf8.GetBytes((To-Crlf $readme))
     "$name/THIRD-PARTY-NOTICES.txt"  = $utf8.GetBytes((To-Crlf $notices.ToString()))

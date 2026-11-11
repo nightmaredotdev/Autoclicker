@@ -3,17 +3,17 @@ resolver = "3"
 members = ["crates/core", "crates/platform", "crates/app"]
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 # Oldest toolchain this workspace has actually been built with (Slint 1.18 itself needs >= 1.92).
 rust-version = "1.97"
 license = "MIT"
-repository = "https://github.com/nightmaredotdev/autoclicker"
+repository = "https://github.com/nightmaredotdev/Cadence"
 publish = false
 
 [workspace.dependencies]
-autoclicker-core = { path = "crates/core" }
-autoclicker-platform = { path = "crates/platform" }
+cadence-core = { path = "crates/core" }
+cadence-platform = { path = "crates/platform" }
 
 fastrand = "2.5"
 serde = { version = "1.0", features = ["derive"] }

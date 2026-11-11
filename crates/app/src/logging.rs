@@ -1,9 +1,9 @@
 //! A small rotating file logger for the `log` facade.
 //!
-//! * Location: `%LOCALAPPDATA%\Autoclicker\logs\autoclicker.log`
-//!   (`AUTOCLICKER_LOG_DIR` overrides the directory, e.g. for tests).
+//! * Location: `%LOCALAPPDATA%\Cadence\logs\cadence.log`
+//!   (`CADENCE_LOG_DIR` overrides the directory, e.g. for tests).
 //! * Size: when the file would exceed [`MAX_BYTES`] it is renamed to
-//!   `autoclicker.1.log` (replacing the previous one) and a new file is
+//!   `cadence.1.log` (replacing the previous one) and a new file is
 //!   started, so at most about twice that is kept. An oversized file left by a
 //!   previous run is rotated at startup.
 //! * Failures never affect the application: if the directory or file cannot
@@ -21,17 +21,17 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const LOG_DIR_ENV: &str = "AUTOCLICKER_LOG_DIR";
+pub const LOG_DIR_ENV: &str = "CADENCE_LOG_DIR";
 pub const MAX_BYTES: u64 = 1024 * 1024;
-pub const FILE_NAME: &str = "autoclicker.log";
-pub const ROTATED_NAME: &str = "autoclicker.1.log";
+pub const FILE_NAME: &str = "cadence.log";
+pub const ROTATED_NAME: &str = "cadence.1.log";
 
 /// The log directory, or `None` if no per-user data directory exists.
 pub fn default_dir() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os(LOG_DIR_ENV) {
         return Some(PathBuf::from(p));
     }
-    directories::BaseDirs::new().map(|d| d.data_local_dir().join("Autoclicker").join("logs"))
+    directories::BaseDirs::new().map(|d| d.data_local_dir().join("Cadence").join("logs"))
 }
 
 /// Replaces the user's profile directory with `%USERPROFILE%` so logs do not
@@ -137,7 +137,7 @@ impl FileLogger {
 }
 
 fn wanted(metadata: &Metadata<'_>) -> bool {
-    let ours = metadata.target().starts_with("autoclicker");
+    let ours = metadata.target().starts_with("cadence");
     metadata.level() <= if ours { Level::Info } else { Level::Warn }
 }
 
@@ -210,10 +210,8 @@ mod tests {
     struct TempDir(PathBuf);
     impl TempDir {
         fn new(name: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "autoclicker-log-test-{name}-{}",
-                std::process::id()
-            ));
+            let dir = std::env::temp_dir()
+                .join(format!("cadence-log-test-{name}-{}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             Self(dir)
         }
@@ -248,8 +246,8 @@ mod tests {
         let t = TempDir::new("format");
         let logger = FileLogger::open(&t.0, MAX_BYTES);
         assert!(logger.is_active());
-        record(&logger, Level::Info, "autoclicker::gui", "started");
-        record(&logger, Level::Debug, "autoclicker::gui", "too detailed");
+        record(&logger, Level::Info, "cadence::gui", "started");
+        record(&logger, Level::Debug, "cadence::gui", "too detailed");
         record(
             &logger,
             Level::Info,
@@ -262,7 +260,7 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2, "{text}");
         assert!(
-            lines[0].ends_with("INFO  [autoclicker::gui] started"),
+            lines[0].ends_with("INFO  [cadence::gui] started"),
             "{}",
             lines[0]
         );
@@ -279,7 +277,7 @@ mod tests {
             record(
                 &logger,
                 Level::Info,
-                "autoclicker",
+                "cadence",
                 &format!("line {i:03} with some padding"),
             );
         }
@@ -309,7 +307,7 @@ mod tests {
         fs::create_dir_all(&t.0).unwrap();
         fs::write(t.0.join(FILE_NAME), vec![b'x'; 500]).unwrap();
         let logger = FileLogger::open(&t.0, 400);
-        record(&logger, Level::Info, "autoclicker", "fresh");
+        record(&logger, Level::Info, "cadence", "fresh");
         logger.flush();
         assert_eq!(fs::metadata(t.0.join(ROTATED_NAME)).unwrap().len(), 500);
         assert!(fs::read_to_string(logger.path()).unwrap().contains("fresh"));
@@ -323,7 +321,7 @@ mod tests {
         fs::write(&file_in_the_way, b"x").unwrap();
         let logger = FileLogger::open(&file_in_the_way.join("logs"), MAX_BYTES);
         assert!(!logger.is_active());
-        record(&logger, Level::Error, "autoclicker", "goes nowhere");
+        record(&logger, Level::Error, "cadence", "goes nowhere");
         logger.flush(); // no panic, no file
     }
 
@@ -333,7 +331,7 @@ mod tests {
             .unwrap()
             .home_dir()
             .to_path_buf();
-        let p = home.join("AppData").join("Local").join("Autoclicker");
+        let p = home.join("AppData").join("Local").join("Cadence");
         let shown = display_path(&p);
         assert!(shown.starts_with("%USERPROFILE%"), "{shown}");
         assert!(!shown.contains(&*home.to_string_lossy()), "{shown}");

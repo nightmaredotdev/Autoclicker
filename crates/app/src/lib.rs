@@ -1,4 +1,4 @@
-//! Autoclicker desktop application: the Slint GUI, configuration I/O and the
+//! Cadence desktop application: the Slint GUI, configuration I/O and the
 //! wiring between the UI, the click engine and the platform backend.
 //!
 //! Unsafe code: every handwritten module declares `#![forbid(unsafe_code)]`.

@@ -1,6 +1,6 @@
 # Supplementary license files
 
-Some crates compiled into Autoclicker publish their packages without a
+Some crates compiled into Cadence publish their packages without a
 license file. For those, `scripts/package.ps1` takes the license text from
 `packaging/licenses/<crate>-<version>/` and adds it to
 `THIRD-PARTY-NOTICES.txt`. `scripts/verify-package.ps1` checks that each text
