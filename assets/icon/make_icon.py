@@ -2,17 +2,19 @@
 """Generates the Cadence icon assets from cadence.svg.
 
 cadence.svg is the canonical artwork and is never modified. This script
-nests it, unchanged except for its colour (white instead of the SVG's
-default dark colour), on a blue rounded-square tile; the tray icon for the
-running state adds a green badge. Every size is rendered directly from the
-vector artwork by resvg, a development-time tool pinned to one version and
-checksum below.
+nests it, unchanged except for its colour (near-white instead of the SVG's
+default dark colour), on a graphite rounded-square tile with a lighter rim,
+a monochrome treatment that matches the application's interface and stays
+legible on light and dark backgrounds at every size. The tray icon for the
+running state adds a small, muted green dot. Every size is rendered
+directly from the vector artwork by resvg, a development-time tool pinned to
+one version and checksum below.
 
 Outputs (written next to this script):
     cadence.ico        multi-size Windows icon (16-256 px, PNG-compressed)
     icon-256.png       256 px window icon
     tray-idle.png      32 px tray icon (stopped)
-    tray-running.png   32 px tray icon (running, green badge)
+    tray-running.png   32 px tray icon (running, small green dot)
 
 Requirements: Python 3.8+ (standard library only) and the official resvg
 0.49.0 executable, found through the RESVG environment variable or on PATH:
@@ -44,18 +46,21 @@ RESVG_EXECUTABLES = {
 SVG_NS = "http://www.w3.org/2000/svg"
 CANVAS = 256  # coordinate system of the tile; matches cadence.svg's viewBox
 
-# Tile: blue rounded square with a darker rim for contrast on light taskbars.
-BACKGROUND = "#2563eb"
-BACKGROUND_EDGE = "#1d4eba"
+# Tile: graphite rounded square. The lighter rim outlines it on dark
+# taskbars; the dark fill contrasts with light ones. The near-white glyph has
+# full contrast with the tile either way.
+BACKGROUND = "#1f1f1f"
+BACKGROUND_EDGE = "#5c5c5c"
 CORNER = 0.22 * CANVAS
 RIM = 0.035 * CANVAS
-GLYPH = "#ffffff"
-# Running badge: green dot with a white ring, lower right.
-BADGE = "#16a34a"
-BADGE_RIM = "#ffffff"
-BADGE_CENTER = 0.76 * CANVAS
-BADGE_RADIUS = 0.24 * CANVAS
-BADGE_INNER = 0.78  # green part, as a fraction of the badge radius
+GLYPH = "#f5f5f5"
+# Running indicator: a small muted green dot in the lower-right corner (clear
+# of the glyph), set off by a ring in the tile colour.
+BADGE = "#2ea043"
+BADGE_RIM = BACKGROUND
+BADGE_CENTER = 0.81 * CANVAS
+BADGE_RADIUS = 0.15 * CANVAS
+BADGE_INNER = 0.72  # green part, as a fraction of the dot's radius
 
 ICO_SIZES = [16, 20, 24, 32, 40, 48, 64, 256]
 TRAY_SIZE = 32

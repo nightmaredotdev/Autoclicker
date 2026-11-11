@@ -1,11 +1,15 @@
 # Application icon
 
 `cadence.svg` is the canonical Cadence logo. It is never edited by the
-build: `make_icon.py` nests it unchanged, drawn in white instead of its
-default dark colour, on a blue rounded-square tile (`#2563eb`, rim
-`#1d4eba`). The tray icon for the running state adds a green badge
-(`#16a34a` with a white ring). Every size is rendered directly from the
-vector artwork.
+build: `make_icon.py` nests it unchanged, drawn in near-white (`#f5f5f5`)
+instead of its default dark colour, on a graphite rounded-square tile
+(`#1f1f1f`) with a lighter rim (`#5c5c5c`). This monochrome treatment
+matches the application's interface: the glyph has full contrast with the
+tile at every size, the dark tile stands out on light backgrounds and the
+rim outlines it on dark ones, so one set of icons works on both. The tray
+icon for the running state adds a small, muted green dot (`#2ea043`) in the
+lower-right corner, clear of the glyph and set off by a ring in the tile
+colour. Every size is rendered directly from the vector artwork.
 
 Generated files (committed, so building does not need Python or resvg):
 
