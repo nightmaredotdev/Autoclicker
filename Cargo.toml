@@ -12,8 +12,8 @@ repository = "https://github.com/nightmaredotdev/autoclicker"
 publish = false
 
 [workspace.dependencies]
-autoclicker-core = { path = "crates/core" }
-autoclicker-platform = { path = "crates/platform" }
+cadence-core = { path = "crates/core" }
+cadence-platform = { path = "crates/platform" }
 
 fastrand = "2.5"
 serde = { version = "1.0", features = ["derive"] }

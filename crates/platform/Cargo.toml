@@ -1,5 +1,5 @@
 [package]
-name = "autoclicker-platform"
+name = "cadence-platform"
 description = "Platform-specific input injection, global hotkeys, timing and screen queries."
 version.workspace = true
 edition.workspace = true
@@ -14,7 +14,7 @@ publish.workspace = true
 diagnostics = []
 
 [dependencies]
-autoclicker-core.workspace = true
+cadence-core.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]

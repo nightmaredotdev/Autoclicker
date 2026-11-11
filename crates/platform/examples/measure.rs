@@ -12,7 +12,7 @@
 //!   exclusive-mode DirectX swap chain).
 //!
 //! ```text
-//! cargo run -p autoclicker-platform --features diagnostics --release --example measure -- \
+//! cargo run -p cadence-platform --features diagnostics --release --example measure -- \
 //!     [--interval-ms 100] [--hold-ms 10] [--clicks 200] [--scenario both] [--waiter both]
 //! ```
 
@@ -28,16 +28,16 @@ fn main() {
 
 #[cfg(windows)]
 mod imp {
-    use autoclicker_core::config::{ClickConfig, TargetMode};
-    use autoclicker_core::engine::{Command, ThreadExit, spawn_engine};
-    use autoclicker_core::geometry::{Point, Rect};
-    use autoclicker_core::keys::Modifiers;
-    use autoclicker_core::status::{Snapshot, StatusSlot};
-    use autoclicker_core::wait::{PlainWaiter, Waiter};
-    use autoclicker_platform::diagnostics::{
+    use cadence_core::config::{ClickConfig, TargetMode};
+    use cadence_core::engine::{Command, ThreadExit, spawn_engine};
+    use cadence_core::geometry::{Point, Rect};
+    use cadence_core::keys::Modifiers;
+    use cadence_core::status::{Snapshot, StatusSlot};
+    use cadence_core::wait::{PlainWaiter, Waiter};
+    use cadence_platform::diagnostics::{
         MouseHookRecorder, TestWindow, WindowKind, foreground_window, monitors, power_source,
     };
-    use autoclicker_platform::{HighResWaiter, WindowsInput, enable_per_monitor_dpi_awareness};
+    use cadence_platform::{HighResWaiter, WindowsInput, enable_per_monitor_dpi_awareness};
     use std::io::{BufRead, BufReader, Write};
     use std::process::{Child, Command as Process, Stdio};
     use std::sync::Arc;

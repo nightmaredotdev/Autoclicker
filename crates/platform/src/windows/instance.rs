@@ -35,7 +35,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WS_POPUP,
 };
 
-use autoclicker_core::engine::ThreadExit;
+use cadence_core::engine::ThreadExit;
 
 /// Title of the hidden window that receives session-end messages.
 pub const SYSTEM_EVENTS_WINDOW_TITLE: &str = "Autoclicker system events";

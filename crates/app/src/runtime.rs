@@ -11,11 +11,11 @@
 
 #![forbid(unsafe_code)]
 
-use autoclicker_core::config::{HotkeyAction, HotkeyBindings, ValidatedConfig};
-use autoclicker_core::engine::{Command, EngineHandle, ThreadExit, spawn_engine};
-use autoclicker_core::status::{Snapshot, StatusSlot, StatusUpdate};
-use autoclicker_core::wait::{CommandSender, EngineGone, PlainWaiter, Waiter};
-use autoclicker_platform::{
+use cadence_core::config::{HotkeyAction, HotkeyBindings, ValidatedConfig};
+use cadence_core::engine::{Command, EngineHandle, ThreadExit, spawn_engine};
+use cadence_core::status::{Snapshot, StatusSlot, StatusUpdate};
+use cadence_core::wait::{CommandSender, EngineGone, PlainWaiter, Waiter};
+use cadence_platform::{
     HighResWaiter, HotkeyEvent, HotkeyService, Registration, Win32Error, WindowsInput,
 };
 use std::fmt;
@@ -265,13 +265,13 @@ fn seed() -> u64 {
 #[cfg(test)]
 mod tests {
     //! Integration tests using the real desktop; run serially with
-    //! `cargo test -p autoclicker --lib -- --ignored --test-threads=1`.
+    //! `cargo test -p cadence --lib -- --ignored --test-threads=1`.
 
     use super::*;
-    use autoclicker_core::config::{ClickConfig, Config, HotkeyConfig, TargetMode};
-    use autoclicker_core::geometry::Rect;
-    use autoclicker_core::keys::{Hotkey, Key, Modifiers};
-    use autoclicker_platform::diagnostics::{
+    use cadence_core::config::{ClickConfig, Config, HotkeyConfig, TargetMode};
+    use cadence_core::geometry::Rect;
+    use cadence_core::keys::{Hotkey, Key, Modifiers};
+    use cadence_platform::diagnostics::{
         MouseHookRecorder, TestWindow, WindowKind, force_foreground, foreground_window, monitors,
         send_keys,
     };
@@ -299,7 +299,7 @@ mod tests {
         .hotkeys
     }
 
-    /// F13/F14 bindings, so tests never collide with a running autoclicker.
+    /// F13/F14 bindings, so tests never collide with a running Cadence.
     fn config(hold_ms: u32, interval_ms: u32) -> ValidatedConfig {
         let mut cfg = Config {
             click: ClickConfig {

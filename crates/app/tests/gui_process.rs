@@ -1,7 +1,7 @@
 //! End-to-end tests of the real executable (separate processes).
 //!
 //! Interactive - run with:
-//! `cargo test -p autoclicker --test gui_process -- --ignored --test-threads=1`
+//! `cargo test -p cadence --test gui_process -- --ignored --test-threads=1`
 //!
 //! Each test gives the application its own settings file
 //! (`AUTOCLICKER_CONFIG`, hotkeys on F13/F14/F15), single-instance name
@@ -12,14 +12,14 @@
 
 #![cfg(windows)]
 
-use autoclicker_core::config::{Config, HotkeyConfig, TargetMode};
-use autoclicker_core::geometry::Rect;
-use autoclicker_core::keys::{Hotkey, Key};
-use autoclicker_platform::diagnostics::{
+use cadence_core::config::{Config, HotkeyConfig, TargetMode};
+use cadence_core::geometry::Rect;
+use cadence_core::keys::{Hotkey, Key};
+use cadence_platform::diagnostics::{
     HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, foreground_window, monitors,
     post_close, send_keys, simulate_session_end, windows_of_process,
 };
-use autoclicker_platform::{HotkeyService, SYSTEM_EVENTS_WINDOW_TITLE};
+use cadence_platform::{HotkeyService, SYSTEM_EVENTS_WINDOW_TITLE};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
@@ -78,13 +78,13 @@ impl Sandbox {
     }
 
     fn start_with_log_dir(&self, log_dir: &Path) -> App {
-        let child = Command::new(env!("CARGO_BIN_EXE_autoclicker"))
+        let child = Command::new(env!("CARGO_BIN_EXE_cadence"))
             .env("AUTOCLICKER_CONFIG", self.config())
             .env("AUTOCLICKER_INSTANCE", &self.instance)
             .env("AUTOCLICKER_LOG_DIR", log_dir)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-            .expect("start autoclicker");
+            .expect("start cadence");
         App(child)
     }
 }
@@ -398,7 +398,7 @@ fn the_log_records_startup_problems_and_shutdown() {
 
     let log = sb.log_text();
     for expected in [
-        "INFO  [autoclicker::gui] Cadence ",
+        "INFO  [cadence::gui] Cadence ",
         "hotkey toggle = F13",
         "hotkey set target = F15 could not be registered",
         "clicking started (current position mode)",
@@ -410,7 +410,7 @@ fn the_log_records_startup_problems_and_shutdown() {
         assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
     }
     assert!(
-        log.contains("WARN  [autoclicker::gui] hotkey set target"),
+        log.contains("WARN  [cadence::gui] hotkey set target"),
         "{log}"
     );
     // No per-click lines and no account name.

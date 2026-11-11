@@ -3,7 +3,7 @@
 //! it only runs when `--ignored` is passed:
 //!
 //! ```text
-//! cargo test -p autoclicker --test gui -- --ignored
+//! cargo test -p cadence --test gui -- --ignored
 //! ```
 //!
 //! Actions are performed through the same callbacks the controls invoke, and
@@ -22,21 +22,21 @@ fn main() {
 
 #[cfg(windows)]
 mod imp {
-    use autoclicker::config_store;
-    use autoclicker::gui::{App, GuiOptions};
-    use autoclicker::runtime::{JOIN_TIMEOUT, WaiterKind};
-    use autoclicker::ui::RunStatus;
-    use autoclicker_core::backend::InputBackend;
-    use autoclicker_core::config::{Config, HotkeyAction, HotkeyConfig, TargetMode};
-    use autoclicker_core::engine::ThreadExit;
-    use autoclicker_core::geometry::{Point, Rect};
-    use autoclicker_core::keys::{Hotkey, Key, Modifiers};
-    use autoclicker_platform::diagnostics::{
+    use cadence::config_store;
+    use cadence::gui::{App, GuiOptions};
+    use cadence::runtime::{JOIN_TIMEOUT, WaiterKind};
+    use cadence::ui::RunStatus;
+    use cadence_core::backend::InputBackend;
+    use cadence_core::config::{Config, HotkeyAction, HotkeyConfig, TargetMode};
+    use cadence_core::engine::ThreadExit;
+    use cadence_core::geometry::{Point, Rect};
+    use cadence_core::keys::{Hotkey, Key, Modifiers};
+    use cadence_platform::diagnostics::{
         HookEvent, MouseHookRecorder, TestWindow, WindowInfo, WindowKind, click_unmarked,
         click_unmarked_button, client_rect, cursor_position, force_foreground, foreground_window,
         monitors, post_close, send_keys, window_at, windows_of_process,
     };
-    use autoclicker_platform::{HotkeyService, WindowsInput};
+    use cadence_platform::{HotkeyService, WindowsInput};
     use slint::{Model, Timer, TimerMode};
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
@@ -153,7 +153,7 @@ mod imp {
     }
 
     /// Keys are only injected while one of this process's windows is in front.
-    fn focus(window: autoclicker_platform::diagnostics::WindowId) {
+    fn focus(window: cadence_platform::diagnostics::WindowId) {
         for _ in 0..40 {
             if force_foreground(window) {
                 pump(Duration::from_millis(80));
@@ -166,7 +166,7 @@ mod imp {
         panic!("inconclusive: could not bring a test-owned window to the foreground");
     }
 
-    fn press(window: autoclicker_platform::diagnostics::WindowId, keys: &[(u16, bool)]) {
+    fn press(window: cadence_platform::diagnostics::WindowId, keys: &[(u16, bool)]) {
         assert_eq!(
             foreground_window(),
             window,
@@ -194,7 +194,7 @@ mod imp {
     }
 
     /// Hotkeys on F13-F15 so the test never collides with a running
-    /// autoclicker that uses the defaults.
+    /// Cadence that uses the defaults.
     fn initial_config() -> Config {
         Config {
             hotkeys: {

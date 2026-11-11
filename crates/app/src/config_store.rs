@@ -11,7 +11,7 @@
 
 #![forbid(unsafe_code)]
 
-use autoclicker_core::config::Config;
+use cadence_core::config::Config;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -117,8 +117,8 @@ pub fn save(path: &Path, config: &Config) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autoclicker_core::config::TargetMode;
-    use autoclicker_core::geometry::Point;
+    use cadence_core::config::TargetMode;
+    use cadence_core::geometry::Point;
 
     struct TempDir(PathBuf);
 

@@ -1,6 +1,6 @@
 //! Mapping of portable keys to Windows virtual-key codes.
 
-use autoclicker_core::keys::{Key, Modifiers};
+use cadence_core::keys::{Key, Modifiers};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT,
 };

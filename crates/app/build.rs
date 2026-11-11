@@ -25,10 +25,10 @@ fn embed_windows_resources() {
     let mut res = winresource::WindowsResource::new();
     res.set_icon("../../assets/icon/cadence.ico")
         .set_manifest_file(manifest_path.to_str().expect("UTF-8 path"))
-        .set("ProductName", "Autoclicker")
-        .set("FileDescription", "Autoclicker")
-        .set("InternalName", "autoclicker")
-        .set("OriginalFilename", "autoclicker.exe")
+        .set("ProductName", "Cadence")
+        .set("FileDescription", "Cadence")
+        .set("InternalName", "cadence")
+        .set("OriginalFilename", "cadence.exe")
         .set(
             "LegalCopyright",
             "Copyright (c) 2026 nightmare. MIT License.",

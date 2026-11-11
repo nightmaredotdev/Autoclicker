@@ -4,9 +4,9 @@
 
 #![forbid(unsafe_code)]
 
-use autoclicker_core::config::{ClickConfig, HotkeyAction, MAX_INTERVAL_MS, MIN_INTERVAL_MS};
-use autoclicker_core::keys::{Hotkey, Key, Modifiers};
-use autoclicker_core::status::{RunState, Snapshot};
+use cadence_core::config::{ClickConfig, HotkeyAction, MAX_INTERVAL_MS, MIN_INTERVAL_MS};
+use cadence_core::keys::{Hotkey, Key, Modifiers};
+use cadence_core::status::{RunState, Snapshot};
 
 /// Raw text of the timing fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -334,10 +334,10 @@ pub fn status_view(s: &Snapshot) -> StatusView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use autoclicker_core::backend::InputError;
-    use autoclicker_core::config::TargetMode;
-    use autoclicker_core::geometry::Point;
-    use autoclicker_core::status::Fault;
+    use cadence_core::backend::InputError;
+    use cadence_core::config::TargetMode;
+    use cadence_core::geometry::Point;
+    use cadence_core::status::Fault;
 
     fn fields(i: &str, j: &str, h: &str, r: &str) -> TimingFields {
         TimingFields {

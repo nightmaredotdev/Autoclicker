@@ -17,7 +17,7 @@
 
 use super::error::Win32Error;
 use super::input::{INJECTION_SIGNATURE, buttons_swapped};
-use autoclicker_core::geometry::Point;
+use cadence_core::geometry::Point;
 use std::sync::mpsc;
 use std::sync::{Mutex, PoisonError};
 use std::thread::JoinHandle;

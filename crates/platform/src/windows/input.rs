@@ -1,9 +1,9 @@
 //! Cursor, monitor and mouse-button access via Win32.
 
 use super::error::Win32Error;
-use autoclicker_core::backend::{ButtonAction, InputBackend, InputError, SendError};
-use autoclicker_core::geometry::{Point, Rect};
-use autoclicker_core::keys::Modifiers;
+use cadence_core::backend::{ButtonAction, InputBackend, InputError, SendError};
+use cadence_core::geometry::{Point, Rect};
+use cadence_core::keys::Modifiers;
 use std::mem::size_of;
 use windows_sys::Win32::Foundation::POINT;
 use windows_sys::Win32::Graphics::Gdi::{

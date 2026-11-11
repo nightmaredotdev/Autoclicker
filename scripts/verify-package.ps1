@@ -30,7 +30,7 @@ function Fail([string]$message) { throw "VERIFY FAILED: $message" }
 function Ok([string]$message) { Write-Output "  ok  $message" }
 
 $version = ((& cargo metadata --format-version 1 --no-deps --locked) -join "`n" | ConvertFrom-Json).packages |
-    Where-Object { $_.name -eq 'autoclicker' } | ForEach-Object { $_.version }
+    Where-Object { $_.name -eq 'cadence' } | ForEach-Object { $_.version }
 $name = "Autoclicker-$version-windows-x64"
 if (-not $ZipPath) { $ZipPath = Join-Path $root "target\package\$name.zip" }
 if (-not (Test-Path $ZipPath)) { Fail "missing $ZipPath" }
@@ -43,7 +43,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::ExtractToDirectory($ZipPath, $work)
     $folder = Join-Path $work $name
-    $expected = @('LICENSE.txt', 'README.txt', 'THIRD-PARTY-NOTICES.txt', 'VERSION.txt', 'autoclicker.exe')
+    $expected = @('LICENSE.txt', 'README.txt', 'THIRD-PARTY-NOTICES.txt', 'VERSION.txt', 'cadence.exe')
     $actual = @(Get-ChildItem -LiteralPath $folder -File | ForEach-Object Name | Sort-Object)
     if ((Compare-Object $expected $actual) -or @(Get-ChildItem -LiteralPath $work).Count -ne 1) {
         Fail "unexpected contents: $($actual -join ', ')"
@@ -68,10 +68,10 @@ try {
     }
 
     # ---- executable metadata ----------------------------------------------------
-    $exe = Join-Path $folder 'autoclicker.exe'
+    $exe = Join-Path $folder 'cadence.exe'
     $info = (Get-Item -LiteralPath $exe).VersionInfo
-    foreach ($pair in @(@('ProductName', 'Autoclicker'), @('FileDescription', 'Autoclicker'),
-                        @('OriginalFilename', 'autoclicker.exe'), @('ProductVersion', $version), @('FileVersion', $version))) {
+    foreach ($pair in @(@('ProductName', 'Cadence'), @('FileDescription', 'Cadence'),
+                        @('OriginalFilename', 'cadence.exe'), @('ProductVersion', $version), @('FileVersion', $version))) {
         if ($info.($pair[0]) -ne $pair[1]) { Fail "$($pair[0]) is '$($info.($pair[0]))', expected '$($pair[1])'" }
     }
     Ok "version info: $($info.ProductName) $($info.ProductVersion), '$($info.FileDescription)', $($info.LegalCopyright)"

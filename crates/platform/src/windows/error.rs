@@ -1,6 +1,6 @@
 //! Win32 error codes and messages.
 
-use autoclicker_core::backend::InputError;
+use cadence_core::backend::InputError;
 use std::fmt;
 use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::System::Diagnostics::Debug::{

@@ -9,11 +9,11 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     #[cfg(windows)]
     {
-        autoclicker::gui::run()
+        cadence::gui::run()
     }
     #[cfg(not(windows))]
     {
-        eprintln!("autoclicker: only Windows is supported at the moment");
+        eprintln!("cadence: only Windows is supported at the moment");
         ExitCode::FAILURE
     }
 }

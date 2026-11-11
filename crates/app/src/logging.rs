@@ -137,7 +137,7 @@ impl FileLogger {
 }
 
 fn wanted(metadata: &Metadata<'_>) -> bool {
-    let ours = metadata.target().starts_with("autoclicker");
+    let ours = metadata.target().starts_with("cadence");
     metadata.level() <= if ours { Level::Info } else { Level::Warn }
 }
 
@@ -248,8 +248,8 @@ mod tests {
         let t = TempDir::new("format");
         let logger = FileLogger::open(&t.0, MAX_BYTES);
         assert!(logger.is_active());
-        record(&logger, Level::Info, "autoclicker::gui", "started");
-        record(&logger, Level::Debug, "autoclicker::gui", "too detailed");
+        record(&logger, Level::Info, "cadence::gui", "started");
+        record(&logger, Level::Debug, "cadence::gui", "too detailed");
         record(
             &logger,
             Level::Info,
@@ -262,7 +262,7 @@ mod tests {
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines.len(), 2, "{text}");
         assert!(
-            lines[0].ends_with("INFO  [autoclicker::gui] started"),
+            lines[0].ends_with("INFO  [cadence::gui] started"),
             "{}",
             lines[0]
         );
@@ -279,7 +279,7 @@ mod tests {
             record(
                 &logger,
                 Level::Info,
-                "autoclicker",
+                "cadence",
                 &format!("line {i:03} with some padding"),
             );
         }
@@ -309,7 +309,7 @@ mod tests {
         fs::create_dir_all(&t.0).unwrap();
         fs::write(t.0.join(FILE_NAME), vec![b'x'; 500]).unwrap();
         let logger = FileLogger::open(&t.0, 400);
-        record(&logger, Level::Info, "autoclicker", "fresh");
+        record(&logger, Level::Info, "cadence", "fresh");
         logger.flush();
         assert_eq!(fs::metadata(t.0.join(ROTATED_NAME)).unwrap().len(), 500);
         assert!(fs::read_to_string(logger.path()).unwrap().contains("fresh"));
@@ -323,7 +323,7 @@ mod tests {
         fs::write(&file_in_the_way, b"x").unwrap();
         let logger = FileLogger::open(&file_in_the_way.join("logs"), MAX_BYTES);
         assert!(!logger.is_active());
-        record(&logger, Level::Error, "autoclicker", "goes nowhere");
+        record(&logger, Level::Error, "cadence", "goes nowhere");
         logger.flush(); // no panic, no file
     }
 

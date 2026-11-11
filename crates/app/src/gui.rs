@@ -19,13 +19,13 @@ use crate::form::{self, IntervalUnit, KeyInput, Status, TimingFields};
 use crate::runtime::{RebindError, Runtime, ShutdownReport, WaiterKind};
 use crate::ui::{AboutWindow, AppTray, HotkeyRow, MainWindow, RunStatus};
 use crate::{config_store, logging};
-use autoclicker_core::backend::InputBackend;
-use autoclicker_core::config::{ClickConfig, Config, HotkeyAction, TargetMode};
-use autoclicker_core::engine::Command;
-use autoclicker_core::geometry::Point;
-use autoclicker_core::keys::{Hotkey, Modifiers};
-use autoclicker_core::status::{RunState, Snapshot};
-use autoclicker_platform::{
+use cadence_core::backend::InputBackend;
+use cadence_core::config::{ClickConfig, Config, HotkeyAction, TargetMode};
+use cadence_core::engine::Command;
+use cadence_core::geometry::Point;
+use cadence_core::keys::{Hotkey, Modifiers};
+use cadence_core::status::{RunState, Snapshot};
+use cadence_platform::{
     Acquire, PickOutcome, PointPicker, SystemEvents, WindowsInput, acquire_instance,
     activate_own_window, enable_per_monitor_dpi_awareness,
 };
@@ -429,7 +429,7 @@ impl Controller {
         self.log_transition(&update.snapshot);
         for notice in &update.notices {
             match notice {
-                autoclicker_core::status::Notice::ReleaseRecovered { .. } => warn!("{notice}"),
+                cadence_core::status::Notice::ReleaseRecovered { .. } => warn!("{notice}"),
                 _ => info!("{notice}"),
             }
         }
@@ -440,7 +440,7 @@ impl Controller {
             .notices
             .iter()
             .rev()
-            .find(|n| !matches!(n, autoclicker_core::status::Notice::TargetSet(_)))
+            .find(|n| !matches!(n, cadence_core::status::Notice::TargetSet(_)))
         {
             self.show_notice(capitalize(&notice.to_string()));
         }
@@ -1085,7 +1085,7 @@ pub fn run() -> ExitCode {
         Err(e) => {
             error!("could not start: {e}");
             log::logger().flush();
-            autoclicker_platform::show_error_message(
+            cadence_platform::show_error_message(
                 "Cadence",
                 &format!("Cadence could not start: {e}"),
             );
@@ -1119,7 +1119,7 @@ pub fn run() -> ExitCode {
     let result = app.run();
     if let Some(events) = events {
         let exit = events.shutdown(crate::runtime::JOIN_TIMEOUT);
-        if exit != autoclicker_core::engine::ThreadExit::Clean {
+        if exit != cadence_core::engine::ThreadExit::Clean {
             warn!("system-events thread: {exit:?}");
         }
     }

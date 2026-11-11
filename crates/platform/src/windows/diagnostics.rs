@@ -9,7 +9,7 @@
 
 use super::error::Win32Error;
 use super::input::INJECTION_SIGNATURE;
-use autoclicker_core::geometry::{Point, Rect};
+use cadence_core::geometry::{Point, Rect};
 use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;

@@ -2,7 +2,7 @@
 //! by default and must run serially from an interactive, unlocked session:
 //!
 //! ```text
-//! cargo test -p autoclicker-platform -- --ignored --test-threads=1
+//! cargo test -p cadence-platform -- --ignored --test-threads=1
 //! ```
 //!
 //! Safety for the user's desktop: injected clicks are either swallowed by a
@@ -13,12 +13,12 @@
 
 use super::diagnostics::*;
 use super::*;
-use autoclicker_core::backend::{ButtonAction, InputBackend};
-use autoclicker_core::config::{ClickConfig, Config, HotkeyAction, HotkeyConfig, TargetMode};
-use autoclicker_core::engine::{Command, ThreadExit, spawn_engine};
-use autoclicker_core::geometry::{Point, Rect};
-use autoclicker_core::keys::{Hotkey, Key, Modifiers};
-use autoclicker_core::status::{Snapshot, StatusSlot};
+use cadence_core::backend::{ButtonAction, InputBackend};
+use cadence_core::config::{ClickConfig, Config, HotkeyAction, HotkeyConfig, TargetMode};
+use cadence_core::engine::{Command, ThreadExit, spawn_engine};
+use cadence_core::geometry::{Point, Rect};
+use cadence_core::keys::{Hotkey, Key, Modifiers};
+use cadence_core::status::{Snapshot, StatusSlot};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -70,7 +70,7 @@ fn primary_center_rect(size: i32) -> Rect {
     Rect::new(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2)
 }
 
-fn bindings(f: impl FnOnce(&mut HotkeyConfig)) -> autoclicker_core::config::HotkeyBindings {
+fn bindings(f: impl FnOnce(&mut HotkeyConfig)) -> cadence_core::config::HotkeyBindings {
     let mut cfg = Config {
         hotkeys: HotkeyConfig::none(),
         ..Config::default()
@@ -359,7 +359,7 @@ fn conflicting_registration_is_reported_and_shutdown_unregisters() {
 
 // ------------------------------------------------------------------- engine end to end
 
-fn engine_settings(f: impl FnOnce(&mut ClickConfig)) -> autoclicker_core::config::ClickSettings {
+fn engine_settings(f: impl FnOnce(&mut ClickConfig)) -> cadence_core::config::ClickSettings {
     let mut c = ClickConfig {
         mode: TargetMode::Cursor,
         interval_ms: 50,
