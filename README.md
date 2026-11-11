@@ -1,5 +1,7 @@
-# Autoclicker
-A customizable desktop autoclicker with configurable click timing, human-like input variation, target positioning, and hotkeys. Built with cross-platform support in mind.
+# Cadence
+Cadence is a customizable desktop autoclicker with configurable click timing, human-like input variation, target positioning, and hotkeys. Built with cross-platform support in mind.
+
+Cadence was previously named **Autoclicker**; version 1.0.0 was released under that name. See [Upgrading from Autoclicker 1.0.0](#upgrading-from-autoclicker-100).
 
 > **Status:** stable (1.0). A portable Windows desktop utility: no installer, no administrator rights.
 
@@ -12,24 +14,31 @@ A customizable desktop autoclicker with configurable click timing, human-like in
 
 ## Download and install
 
-1. Download `Autoclicker-<version>-windows-x64.zip` from the [Releases](https://github.com/nightmaredotdev/Autoclicker/releases) page.
+1. Download `Cadence-<version>-windows-x64.zip` from the [Releases](https://github.com/nightmaredotdev/Cadence/releases) page.
 2. Extract the ZIP to any folder you like (for example your Desktop or a USB drive). No installation or administrator rights are needed.
-3. Run `autoclicker.exe` from the extracted folder.
+3. Run `cadence.exe` from the extracted folder.
 
-**The executable is not code-signed.** The first time you run it, Windows SmartScreen may show "Windows protected your PC". Choose **More info**, then **Run anyway**, if you trust the download. Each release lists the ZIP's SHA-256 checksum so you can verify the file (`Get-FileHash Autoclicker-<version>-windows-x64.zip` in PowerShell).
+**The executable is not code-signed.** The first time you run it, Windows SmartScreen may show "Windows protected your PC". Choose **More info**, then **Run anyway**, if you trust the download. Each release lists the ZIP's SHA-256 checksum so you can verify the file (`Get-FileHash Cadence-<version>-windows-x64.zip` in PowerShell).
 
-To update, close Autoclicker (tray icon > Exit) and replace the folder with the new version. Your settings are kept. To uninstall, delete the folder, and optionally `%APPDATA%\Autoclicker` (settings) and `%LOCALAPPDATA%\Autoclicker` (logs).
+To update, close Cadence (tray icon > Exit) and replace the folder with the new version. Your settings are kept. To uninstall, delete the folder, and optionally `%APPDATA%\Cadence` (settings) and `%LOCALAPPDATA%\Cadence` (logs).
+
+### Upgrading from Autoclicker 1.0.0
+
+1. **Exit Autoclicker first:** right-click its tray icon and choose **Exit**. Cadence and Autoclicker 1.0.0 never run at the same time: if Autoclicker is still running when you start Cadence, Autoclicker's window is shown instead and Cadence exits; if you start Autoclicker while Cadence runs, Cadence's window is shown.
+2. Extract the Cadence ZIP and run `cadence.exe`. On its first start, Cadence copies your Autoclicker settings (`%APPDATA%\Autoclicker\config.toml`) to `%APPDATA%\Cadence\config.toml`, so your target, timing, hotkeys and *Always on top* carry over. The old file is not changed. If it cannot be read or is not valid, Cadence starts with default settings and notes this in its log.
+3. **Replace shortcuts and taskbar pins:** shortcuts, Start menu entries and taskbar pins that point to `autoclicker.exe` keep starting the old program. Pin or link `cadence.exe` instead. On Windows 10, the choice to show the tray icon on the taskbar is stored per program, so you may need to drag the Cadence icon out of the overflow area (^) once.
+4. When you no longer need Autoclicker, delete its folder, and optionally `%APPDATA%\Autoclicker` and `%LOCALAPPDATA%\Autoclicker` (its old settings and logs; Cadence does not use them after the first start).
 
 ## Usage
 
-Start `autoclicker.exe`. The window shows the current state (Stopped / Running / Error) and a Start/Stop button labelled with the toggle hotkey, e.g. **Start (F6)**. Settings are on the **Settings** tab (sections *Target* and *Timing*), hotkeys on the **Hotkeys** tab.
+Start `cadence.exe`. The window shows the current state (Stopped / Running / Error) and a Start/Stop button labelled with the toggle hotkey, e.g. **Start (F6)**. Settings are on the **Settings** tab (sections *Target* and *Timing*), hotkeys on the **Hotkeys** tab.
 
 - **Target:** choose *Fixed position* or *Current position*. *Fixed position* moves to the saved position before each click. To set it, click **Pick target**, then click anywhere on the screen: that click sets the position and is not passed on to the program underneath. Right-click (or **Cancel**) to stop picking without changing the position; there is no time limit. The set-target hotkey sets the position to the current cursor position. *Current position* clicks wherever the cursor is, without moving it; the saved position stays visible but unused, and is kept for when you switch back.
 - **Timing:** interval (start to start), interval jitter (Gaussian σ, truncated at ±3σ), hold duration, and position-jitter radius. Each setting has a short description under its name. Click the interval's unit to switch between milliseconds (`ms`) and clicks per second (`CPS`); the stored interval is always whole milliseconds, so switching never changes it. Position jitter applies to *Fixed position* mode only and is disabled otherwise. Changes apply when you press Enter, click anywhere outside the field, switch tabs or use a button. Invalid values are explained and never applied; the previous value stays active.
 - **Hotkeys:** three global hotkeys (toggle start/stop, set target, exit). Click a binding and press the new combination (Esc cancels). Function keys may be used alone; letters, digits and navigation keys need Ctrl or Alt. F12 is reserved by Windows.
 - **Always on top**, **Logs** (opens the log folder), **About** and **Exit** are at the bottom of the window.
 - **Closing the window hides it** to the notification area; clicking and hotkeys keep working. The tray icon (green dot while clicking) can show/hide the window, start/stop clicking, open the logs and exit. On Windows 10 the icon may start in the overflow area (^ next to the clock); drag it to the taskbar to keep it visible.
-- **One instance:** starting Autoclicker again brings the running window to the front.
+- **One instance:** starting Cadence again brings the running window to the front.
 
 Default settings:
 
@@ -50,16 +59,16 @@ Default settings:
 
 **Hotkeys are global.** While the program runs, Windows does not deliver the registered key combinations to the focused application (verified on Windows 10). A combination that another program already uses is shown as unavailable, and it cannot be recorded, because Windows does not pass that key press to this program.
 
-Settings are saved to `%APPDATA%\Autoclicker\config.toml`. A file that cannot be read as valid settings is moved to `config.toml.bak`, and the window shows a warning. A small log (startup, shutdown, errors and state changes, never individual clicks; at most about 2 MB) is kept in `%LOCALAPPDATA%\Autoclicker\logs`.
+Settings are saved to `%APPDATA%\Cadence\config.toml`. A file that cannot be read as valid settings is moved to `config.toml.bak`, and the window shows a warning. A small log (startup, shutdown, errors and state changes, never individual clicks; at most about 2 MB) is kept in `%LOCALAPPDATA%\Cadence\logs`.
 
 ### Limitations
 
 - The executable is not code-signed, so Windows SmartScreen may warn the first time it runs (see above).
 - Verified on Windows 10 22H2 with a single monitor at 100 % scaling. Windows 11, other scaling factors and multi-monitor setups are expected to work but have not been tested.
-- Windows' privilege isolation blocks clicks into applications running as administrator unless the autoclicker is elevated too, and Windows does not report the failure.
+- Windows' privilege isolation blocks clicks into applications running as administrator unless Cadence is elevated too, and Windows does not report the failure.
 - If the process is killed (for example from Task Manager) while a button is held down, nothing can release it. Click that mouse button once to clear it.
 - Some applications deliberately ignore injected input.
-- While **Pick target** waits for a click, Autoclicker watches the mouse buttons through a standard Windows mouse hook (removed as soon as picking ends). A click on Autoclicker's own window is not used as the position, so its buttons keep working. Picking over windows of programs running as administrator has not been tested.
+- While **Pick target** waits for a click, Cadence watches the mouse buttons through a standard Windows mouse hook (removed as soon as picking ends). A click on Cadence's own window is not used as the position, so its buttons keep working. Picking over windows of programs running as administrator has not been tested.
 
 ## Building
 
@@ -73,7 +82,7 @@ No other native toolchain is required: the UI uses Slint's software renderer, so
 ### Commands
 
 ```sh
-cargo build --release          # binary: target/release/autoclicker.exe
+cargo build --release          # binary: target/release/cadence.exe
 cargo test --workspace         # automated tests (no desktop interaction)
 cargo fmt --all --check        # formatting
 cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -88,12 +97,12 @@ cargo test --workspace -- --ignored --test-threads=1
 Timing measurement (plain vs high-resolution waiter, foreground vs minimized behind a fullscreen window):
 
 ```sh
-cargo run -p autoclicker-platform --features diagnostics --release --example measure -- --interval-ms 100 --hold-ms 10 --clicks 200
+cargo run -p cadence-platform --features diagnostics --release --example measure -- --interval-ms 100 --hold-ms 10 --clicks 200
 ```
 
 ## Release package
 
-`scripts\package.ps1` builds the portable `Autoclicker-<version>-windows-x64.zip` (no installer, no admin rights), and `scripts\verify-package.ps1` checks it. See [docs/release.md](docs/release.md).
+`scripts\package.ps1` builds the portable `Cadence-<version>-windows-x64.zip` (no installer, no admin rights), and `scripts\verify-package.ps1` checks it. See [docs/release.md](docs/release.md).
 
 ## Project layout
 
