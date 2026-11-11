@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-    Builds the portable Windows release ZIP of Autoclicker.
+    Builds the portable Windows release ZIP of Cadence.
 
 .DESCRIPTION
     1. Builds the release executable (unless -NoBuild).
     2. Stages cadence.exe, README.txt, LICENSE.txt, VERSION.txt and
        THIRD-PARTY-NOTICES.txt (the license texts of every crate compiled into
        the executable, collected from the cargo registry).
-    3. Writes target\package\Autoclicker-<version>-windows-x64.zip.
+    3. Writes target\package\Cadence-<version>-windows-x64.zip.
 
     The ZIP is deterministic: entries are sorted, every entry gets the commit
     timestamp, and text files are written byte-for-byte reproducibly. With the
@@ -73,7 +73,7 @@ $apacheText = $null
 $missing = 0
 $supplemented = 0
 $notices = New-Object System.Text.StringBuilder
-[void]$notices.Append("Third-party notices for Autoclicker $version`n")
+[void]$notices.Append("Third-party notices for Cadence $version`n")
 [void]$notices.Append("=" * 60 + "`n`n")
 [void]$notices.Append(@"
 Slint (https://slint.dev) is used under the Slint Royalty-free Desktop,
@@ -136,14 +136,14 @@ if ($apacheText) {
 }
 
 # ---- staging ----------------------------------------------------------------
-$name = "Autoclicker-$version-windows-x64"
+$name = "Cadence-$version-windows-x64"
 $outDir = Join-Path $root 'target\package'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $zipPath = Join-Path $outDir "$name.zip"
 
 $readme = [System.IO.File]::ReadAllText((Join-Path $root 'packaging\README.txt')).Replace("`r`n", "`n").Replace('{{VERSION}}', $version)
 $license = [System.IO.File]::ReadAllText((Join-Path $root 'LICENSE')).Replace("`r`n", "`n")
-$versionText = "Autoclicker $version`nCommit: $commit$(if ($dirty) { ' (with uncommitted changes)' })`nCommit date: $($timestamp.ToString('yyyy-MM-dd HH:mm:ss')) UTC`nTarget: $target`n"
+$versionText = "Cadence $version`nCommit: $commit$(if ($dirty) { ' (with uncommitted changes)' })`nCommit date: $($timestamp.ToString('yyyy-MM-dd HH:mm:ss')) UTC`nTarget: $target`n"
 
 function To-Crlf([string]$s) { return $s.Replace("`n", "`r`n") }
 $entries = [ordered]@{

@@ -34,7 +34,7 @@ function Ok([string]$message) { Write-Output "  ok  $message" }
 
 $version = ((& cargo metadata --format-version 1 --no-deps --locked) -join "`n" | ConvertFrom-Json).packages |
     Where-Object { $_.name -eq 'cadence' } | ForEach-Object { $_.version }
-$name = "Autoclicker-$version-windows-x64"
+$name = "Cadence-$version-windows-x64"
 if (-not $ZipPath) { $ZipPath = Join-Path $root "target\package\$name.zip" }
 if (-not (Test-Path $ZipPath)) { Fail "missing $ZipPath" }
 Write-Output "Verifying $ZipPath"
@@ -54,7 +54,7 @@ try {
     Ok "contents: $($actual -join ', ')"
 
     $versionText = Get-Content -LiteralPath (Join-Path $folder 'VERSION.txt') -Raw
-    if (-not $versionText.StartsWith("Autoclicker $version")) { Fail "VERSION.txt: $versionText" }
+    if (-not $versionText.StartsWith("Cadence $version")) { Fail "VERSION.txt: $versionText" }
     Ok "VERSION.txt names version $version"
     $notices = Get-Content -LiteralPath (Join-Path $folder 'THIRD-PARTY-NOTICES.txt') -Raw
     if (-not $notices.Contains('Slint Royalty-free') -or -not $notices.Contains('Apache License')) { Fail 'third-party notices incomplete' }
