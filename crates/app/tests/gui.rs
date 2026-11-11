@@ -187,7 +187,7 @@ mod imp {
     }
 
     fn temp_dir() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("autoclicker-gui-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cadence-gui-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

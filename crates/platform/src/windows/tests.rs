@@ -501,14 +501,14 @@ fn fixed_target_clicks_land_within_the_jitter_radius() {
 #[ignore = "needs an interactive, unlocked Windows desktop"]
 fn session_end_runs_the_callback_before_returning() {
     let _g = setup();
-    let name = format!("AutoclickerTest.session.{}", std::process::id());
+    let name = format!("CadenceTest.session.{}", std::process::id());
     let Acquire::Acquired(lock) = acquire_instance(&name).unwrap() else {
         panic!("acquire");
     };
     let ran = Arc::new(Mutex::new(None::<Instant>));
     let r = ran.clone();
     let events = SystemEvents::start(
-        &lock,
+        &[&lock],
         || {},
         move || {
             // Simulate a shutdown that takes a moment.

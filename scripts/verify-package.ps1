@@ -11,10 +11,13 @@
     -Reproducible: packages again and requires an identical SHA-256.
     -Launch (interactive desktop): starts the extracted executable from that
       directory with its own single-instance name and log directory, checks
-      that it uses %APPDATA%\Autoclicker for settings and writes nothing next
-      to itself, then ends it through the session-end path and requires exit
+      that it uses %APPDATA%\Cadence for settings and writes nothing next to
+      itself, then ends it through the session-end path and requires exit
       code 0. It reads, but does not change, your settings file (except the
       one-time removal of obsolete Start/Stop hotkeys from a pre-1.0 file).
+      If you have Autoclicker 1.0.0 settings but no Cadence settings yet, the
+      run copies them as a first start would; the check verifies the copy and
+      that the old file is unchanged, then removes the copy again.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File scripts\verify-package.ps1 -Reproducible -Launch
@@ -37,7 +40,7 @@ if (-not (Test-Path $ZipPath)) { Fail "missing $ZipPath" }
 Write-Output "Verifying $ZipPath"
 
 # ---- extract into a different directory -------------------------------------
-$work = Join-Path ([IO.Path]::GetTempPath()) ("autoclicker verify " + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath()) ("cadence verify " + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -133,9 +136,19 @@ public static class VerifyWin {
         $psi = New-Object System.Diagnostics.ProcessStartInfo $exe
         $psi.WorkingDirectory = $folder
         $psi.UseShellExecute = $false
-        $psi.EnvironmentVariables['AUTOCLICKER_INSTANCE'] = "AutoclickerVerify.$PID"
-        $psi.EnvironmentVariables['AUTOCLICKER_LOG_DIR'] = $logs
-        [void]$psi.EnvironmentVariables.Remove('AUTOCLICKER_CONFIG')
+        $psi.EnvironmentVariables['CADENCE_INSTANCE'] = "CadenceVerify.$PID"
+        $psi.EnvironmentVariables['CADENCE_LOG_DIR'] = $logs
+        [void]$psi.EnvironmentVariables.Remove('CADENCE_CONFIG')
+        # Settings state before the run: a first start copies Autoclicker
+        # 1.0.0 settings if Cadence has none. The copy is checked and removed
+        # afterwards; the old file must stay unchanged.
+        $appData = [Environment]::GetFolderPath('ApplicationData')
+        $cadenceConfig = Join-Path $appData 'Cadence\config.toml'
+        $cadenceDir = Split-Path -Parent $cadenceConfig
+        $cadenceDirExisted = Test-Path -LiteralPath $cadenceDir
+        $legacyConfig = Join-Path $appData 'Autoclicker\config.toml'
+        $legacyHash = if (Test-Path -LiteralPath $legacyConfig -PathType Leaf) { (Get-FileHash -LiteralPath $legacyConfig).Hash } else { $null }
+        $firstStart = -not (Test-Path -LiteralPath $cadenceConfig)
         $proc = [System.Diagnostics.Process]::Start($psi)
         try {
             $deadline = (Get-Date).AddSeconds(15)
@@ -146,20 +159,40 @@ public static class VerifyWin {
             }
             Ok 'starts from the extracted directory and shows its window'
 
-            $log = Get-Content -LiteralPath (Join-Path $logs 'autoclicker.log') -Raw
-            $appData = [Environment]::GetFolderPath('ApplicationData')
+            $log = Get-Content -LiteralPath (Join-Path $logs 'cadence.log') -Raw
             $profile = [Environment]::GetFolderPath('UserProfile')
-            $expectedConfig = (Join-Path $appData 'Autoclicker\config.toml').Replace($profile, '%USERPROFILE%')
+            $expectedConfig = (Join-Path $appData 'Cadence\config.toml').Replace($profile, '%USERPROFILE%')
             if (-not $log.Contains("settings file $expectedConfig")) { Fail "settings not under %APPDATA%:`n$log" }
             Ok "settings file: $expectedConfig"
+            if ($firstStart -and $legacyHash) {
+                if ($log.Contains('copied the Autoclicker 1.0.0 settings')) {
+                    if (-not (Test-Path -LiteralPath $cadenceConfig)) { Fail 'settings copy reported but not found' }
+                    Ok 'Autoclicker 1.0.0 settings copied on the first start'
+                } elseif ($log.Contains('did not copy the Autoclicker 1.0.0 settings')) {
+                    Ok 'Autoclicker 1.0.0 settings found but not usable; not copied (logged)'
+                } else {
+                    Fail "first start with Autoclicker 1.0.0 settings did not report the copy:`n$log"
+                }
+            }
 
-            $events = [VerifyWin]::Find([uint32]$proc.Id, 'Autoclicker system events', $false)
+            $events = [VerifyWin]::Find([uint32]$proc.Id, 'Cadence system events', $false)
             if (-not [VerifyWin]::EndSession($events)) { Fail 'session-end messages failed' }
             if (-not $proc.WaitForExit(10000)) { Fail 'did not exit after the session ended' }
             if ($proc.ExitCode -ne 0) { Fail "exit code $($proc.ExitCode)" }
             Ok 'clean exit (code 0) through the session-end path'
         } finally {
-            if (-not $proc.HasExited) { $proc.Kill() }
+            if (-not $proc.HasExited) { $proc.Kill(); $proc.WaitForExit(5000) | Out-Null }
+            if ($firstStart -and (Test-Path -LiteralPath $cadenceConfig)) {
+                Remove-Item -LiteralPath $cadenceConfig
+                if (-not $cadenceDirExisted -and -not (Get-ChildItem -LiteralPath $cadenceDir -Force)) {
+                    Remove-Item -LiteralPath $cadenceDir
+                }
+                Ok 'removed the settings copy made by this check'
+            }
+        }
+        if ($legacyHash) {
+            if ((Get-FileHash -LiteralPath $legacyConfig).Hash -ne $legacyHash) { Fail 'the Autoclicker 1.0.0 settings file was changed' }
+            Ok 'Autoclicker 1.0.0 settings file unchanged'
         }
         $after = @(Get-ChildItem -LiteralPath $folder -Recurse -Force | ForEach-Object Name | Sort-Object)
         if (Compare-Object $expected $after) { Fail "files were written next to the executable: $($after -join ', ')" }

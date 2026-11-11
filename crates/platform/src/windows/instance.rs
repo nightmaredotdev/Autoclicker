@@ -9,8 +9,10 @@
 //!   objects are released when their last handle closes, including when a
 //!   process is terminated, so a crashed instance never blocks a new one.
 //! * [`SystemEvents`] runs a thread with a hidden top-level window that waits
-//!   for the activate event and receives `WM_QUERYENDSESSION`/`WM_ENDSESSION`
-//!   (GUI processes get no console events at logoff/shutdown).
+//!   for the activate events of the locks it is given (an application may
+//!   hold more than one name, e.g. a former product name) and receives
+//!   `WM_QUERYENDSESSION`/`WM_ENDSESSION` (GUI processes get no console
+//!   events at logoff/shutdown).
 
 use super::error::Win32Error;
 use super::handle::OwnedHandle;
@@ -38,7 +40,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use cadence_core::engine::ThreadExit;
 
 /// Title of the hidden window that receives session-end messages.
-pub const SYSTEM_EVENTS_WINDOW_TITLE: &str = "Autoclicker system events";
+pub const SYSTEM_EVENTS_WINDOW_TITLE: &str = "Cadence system events";
 const WM_APP_QUIT: u32 = WM_APP + 3;
 
 fn wide(s: &str) -> Vec<u16> {
@@ -138,14 +140,18 @@ impl Drop for DoneSignal {
 
 impl SystemEvents {
     /// Starts the thread. `on_activate` runs when another instance asks this
-    /// one to show itself; `on_session_end` runs (and must finish shutting
-    /// down) when the Windows session ends. Both run on the events thread.
+    /// one to show itself through the activate event of any of `locks`;
+    /// `on_session_end` runs (and must finish shutting down) when the Windows
+    /// session ends. Both run on the events thread.
     pub fn start(
-        lock: &InstanceLock,
+        locks: &[&InstanceLock],
         on_activate: impl Fn() + Send + 'static,
         on_session_end: impl Fn() + Send + 'static,
     ) -> std::io::Result<Self> {
-        let activate = lock.activate.clone();
+        if locks.is_empty() || locks.len() >= 64 {
+            return Err(std::io::Error::other("between 1 and 63 instance locks"));
+        }
+        let activate: Vec<Arc<OwnedHandle>> = locks.iter().map(|l| l.activate.clone()).collect();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (done_tx, done) = mpsc::channel();
         let thread = std::thread::Builder::new()
@@ -181,7 +187,7 @@ impl SystemEvents {
 }
 
 fn events_thread(
-    activate: &OwnedHandle,
+    activate: &[Arc<OwnedHandle>],
     ready: &mpsc::Sender<Result<u32, Win32Error>>,
     on_activate: &dyn Fn(),
     on_session_end: Box<dyn Fn()>,
@@ -199,7 +205,7 @@ fn events_thread(
     };
     ON_SESSION_END.with(|cb| *cb.borrow_mut() = Some(on_session_end));
 
-    let class = wide("AutoclickerSystemEvents");
+    let class = wide("CadenceSystemEvents");
     let title = wide(SYSTEM_EVENTS_WINDOW_TITLE);
     // SAFETY: null module name returns this executable's handle.
     let module = unsafe { GetModuleHandleW(std::ptr::null()) };
@@ -241,16 +247,19 @@ fn events_thread(
         return;
     }
 
-    let handles = [activate.raw()];
+    let handles: Vec<_> = activate.iter().map(|h| h.raw()).collect();
+    let count = handles.len() as u32; // 1..=63, checked by `start`
     'outer: loop {
-        // SAFETY: one valid handle; wakes for the event or for any message.
-        let r = unsafe { MsgWaitForMultipleObjects(1, handles.as_ptr(), 0, INFINITE, QS_ALLINPUT) };
-        if r == WAIT_OBJECT_0 {
+        // SAFETY: `count` valid handles (kept alive by `activate`); wakes for
+        // any of the events or for any message.
+        let r =
+            unsafe { MsgWaitForMultipleObjects(count, handles.as_ptr(), 0, INFINITE, QS_ALLINPUT) };
+        if (WAIT_OBJECT_0..WAIT_OBJECT_0 + count).contains(&r) {
             on_activate();
             continue;
         }
-        if r != WAIT_OBJECT_0 + 1 {
-            break; // WAIT_FAILED: should not happen with a valid handle
+        if r != WAIT_OBJECT_0 + count {
+            break; // WAIT_FAILED: should not happen with valid handles
         }
         // SAFETY: valid MSG.
         while unsafe { PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) } != 0 {
@@ -324,7 +333,7 @@ mod tests {
     use std::time::Instant;
 
     fn unique(name: &str) -> String {
-        format!("AutoclickerTest.{name}.{}", std::process::id())
+        format!("CadenceTest.{name}.{}", std::process::id())
     }
 
     #[test]
@@ -357,7 +366,7 @@ mod tests {
         let hits = Arc::new(AtomicUsize::new(0));
         let h = hits.clone();
         let events = SystemEvents::start(
-            &lock,
+            &[&lock],
             move || {
                 h.fetch_add(1, Ordering::SeqCst);
             },
@@ -387,8 +396,40 @@ mod tests {
             Acquire::AlreadyRunning
         ));
         let (tx, rx) = mpsc::channel();
-        let events = SystemEvents::start(&lock, move || tx.send(()).unwrap(), || {}).unwrap();
+        let events = SystemEvents::start(&[&lock], move || tx.send(()).unwrap(), || {}).unwrap();
         assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
         assert_eq!(events.shutdown(Duration::from_secs(2)), ThreadExit::Clean);
+    }
+
+    #[test]
+    fn an_activation_through_any_held_name_wakes_the_holder() {
+        let (main, former) = (unique("main"), unique("former"));
+        let Acquire::Acquired(main_lock) = acquire_instance(&main).unwrap() else {
+            panic!("main acquire");
+        };
+        let Acquire::Acquired(former_lock) = acquire_instance(&former).unwrap() else {
+            panic!("former acquire");
+        };
+        let (tx, rx) = mpsc::channel();
+        let events = SystemEvents::start(
+            &[&main_lock, &former_lock],
+            move || tx.send(()).unwrap(),
+            || {},
+        )
+        .unwrap();
+        // A program that only knows the former name finds it taken and
+        // signals it; the holder is woken.
+        assert!(matches!(
+            acquire_instance(&former).unwrap(),
+            Acquire::AlreadyRunning
+        ));
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+        assert!(matches!(
+            acquire_instance(&main).unwrap(),
+            Acquire::AlreadyRunning
+        ));
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+        assert_eq!(events.shutdown(Duration::from_secs(2)), ThreadExit::Clean);
+        assert!(SystemEvents::start(&[], || {}, || {}).is_err());
     }
 }

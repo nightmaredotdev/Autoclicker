@@ -4,8 +4,8 @@
 //! `cargo test -p cadence --test gui_process -- --ignored --test-threads=1`
 //!
 //! Each test gives the application its own settings file
-//! (`AUTOCLICKER_CONFIG`, hotkeys on F13/F14/F15), single-instance name
-//! (`AUTOCLICKER_INSTANCE`) and log directory (`AUTOCLICKER_LOG_DIR`), so it
+//! (`CADENCE_CONFIG`, hotkeys on F13/F14/F15), single-instance name
+//! (`CADENCE_INSTANCE`) and log directory (`CADENCE_LOG_DIR`), so it
 //! never interferes with a running Cadence (or Autoclicker). Every click is swallowed by a
 //! low-level mouse hook in this test process, and keys are injected only
 //! while a test-owned window has the foreground.
@@ -38,8 +38,7 @@ struct Sandbox {
 
 impl Sandbox {
     fn new(name: &str, always_on_top: bool) -> Self {
-        let dir =
-            std::env::temp_dir().join(format!("autoclicker-e2e-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cadence-e2e-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let mut cfg = Config {
@@ -57,7 +56,7 @@ impl Sandbox {
         std::fs::write(dir.join("config.toml"), toml::to_string(&cfg).unwrap()).unwrap();
         Self {
             dir,
-            instance: format!("AutoclickerE2E.{name}.{}", std::process::id()),
+            instance: format!("CadenceE2E.{name}.{}", std::process::id()),
         }
     }
 
@@ -70,7 +69,7 @@ impl Sandbox {
     }
 
     fn log_text(&self) -> String {
-        std::fs::read_to_string(self.logs().join("autoclicker.log")).unwrap_or_default()
+        std::fs::read_to_string(self.logs().join("cadence.log")).unwrap_or_default()
     }
 
     fn start(&self) -> App {
@@ -79,9 +78,9 @@ impl Sandbox {
 
     fn start_with_log_dir(&self, log_dir: &Path) -> App {
         let child = Command::new(env!("CARGO_BIN_EXE_cadence"))
-            .env("AUTOCLICKER_CONFIG", self.config())
-            .env("AUTOCLICKER_INSTANCE", &self.instance)
-            .env("AUTOCLICKER_LOG_DIR", log_dir)
+            .env("CADENCE_CONFIG", self.config())
+            .env("CADENCE_INSTANCE", &self.instance)
+            .env("CADENCE_LOG_DIR", log_dir)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .expect("start cadence");
